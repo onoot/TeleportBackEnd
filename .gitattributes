@@ -15,4 +15,10 @@ kubernetes/kubeconfig.yaml filter=git-crypt diff=git-crypt
 # Шифруем переменные окружения
 .env filter=git-crypt diff=git-crypt
 .env.* filter=git-crypt diff=git-crypt
-!.env.example filter= diff= 
+!.env.example filter= diff=
+
+# Шифруем все файлы с секретами
+**/*secret*.yaml filter=git-crypt diff=git-crypt
+**/*secret*.yml filter=git-crypt diff=git-crypt
+**/*secrets*.yaml filter=git-crypt diff=git-crypt
+**/*secrets*.yml filter=git-crypt diff=git-crypt 

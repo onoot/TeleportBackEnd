@@ -223,45 +223,44 @@ MIT
 
 Проект использует `git-crypt` для безопасного хранения секретов в репозитории.
 
-### Установка git-crypt
+### Первоначальная настройка (для новых разработчиков)
 
-```bash
-# Windows (через Chocolatey)
-choco install git-crypt
+1. Установите git-crypt:
+   ```bash
+   # Windows
+   # Скачайте и установите с https://github.com/AGWA/git-crypt/releases
 
-# macOS
-brew install git-crypt
+   # macOS
+   brew install git-crypt
 
-# Linux
-sudo apt-get install git-crypt
-```
+   # Linux
+   sudo apt-get install git-crypt
+   ```
 
-### Первоначальная настройка (только для администраторов)
+2. Получите файл `secret.key` от администратора проекта
 
-```bash
-# Инициализация git-crypt в репозитории
-git-crypt init
+3. Разблокируйте секреты:
+   ```bash
+   git-crypt unlock path/to/secret.key
+   ```
 
-# Экспорт ключа для других разработчиков
-git-crypt export-key ../secret.key
-
-# Добавьте secret.key в .gitignore!
-```
-
-### Для новых разработчиков
-
-1. Получите `secret.key` от администратора проекта
-2. Разблокируйте репозиторий:
-```bash
-git-crypt unlock /path/to/secret.key
-```
+4. Запустите скрипт настройки:
+   ```bash
+   ./scripts/setup-secrets.sh
+   ```
 
 ### Что зашифровано?
 
-- `kubernetes/secrets/*` - секреты Kubernetes
+- `kubernetes/secrets/*.yaml` - секреты Kubernetes
 - `kubernetes/cluster-config/*` - конфигурации кластера
-- `kubernetes/kubeconfig.yaml` - конфигурация доступа к кластеру
 - `.env` файлы (кроме `.env.example`)
+- Все файлы, содержащие `secret` или `secrets` в имени
+
+### Добавление новых секретов
+
+1. Создайте файл с секретами в соответствующей директории
+2. Убедитесь, что файл соответствует паттерну в `.gitattributes`
+3. Закоммитьте изменения - файл будет автоматически зашифрован
 
 ### Проверка статуса файлов
 
@@ -269,6 +268,6 @@ git-crypt unlock /path/to/secret.key
 # Показать статус шифрования файлов
 git-crypt status
 
-# Проверить, зашифрован ли конкретный файл
-git-crypt status kubernetes/secrets/messenger-secrets.yaml
+# Проверить конкретный файл
+git-crypt status kubernetes/secrets/app-secrets.yaml
 ``` 

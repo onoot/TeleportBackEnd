@@ -32,4 +32,8 @@ build/
 Thumbs.db
 
 # Kubeconfig
-kubeconfig.yaml 
+kubeconfig.yaml
+
+# Git-crypt keys
+*.key
+secret.key 
