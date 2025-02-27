@@ -1,0 +1,72 @@
+name: Deploy to Kubernetes
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push User Service
+        uses: docker/build-push-action@v5
+        with:
+          context: ./src/services/user-service
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/user-service:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Notification Service
+        uses: docker/build-push-action@v5
+        with:
+          context: ./src/services/notification-service
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/notification-service:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Configure kubectl
+        run: |
+          echo "${{ secrets.KUBE_CONFIG }}" > kubeconfig.yaml
+          kubectl --kubeconfig=kubeconfig.yaml get nodes
+
+      - name: Apply secrets
+        run: |
+          echo "${{ secrets.MESSENGER_SECRETS }}" | base64 -d > kubernetes/secrets/messenger-secrets.yaml
+          kubectl --kubeconfig=kubeconfig.yaml apply -f kubernetes/secrets/messenger-secrets.yaml
+
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl --kubeconfig=kubeconfig.yaml apply -f kubernetes/base/
+          kubectl --kubeconfig=kubeconfig.yaml apply -f kubernetes/overlays/prod/
+          kubectl --kubeconfig=kubeconfig.yaml set image deployment/user-service user-service=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/user-service:${{ github.sha }} -n messenger
+          kubectl --kubeconfig=kubeconfig.yaml set image deployment/notification-service notification-service=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/notification-service:${{ github.sha }} -n messenger 

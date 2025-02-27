@@ -1,0 +1,18 @@
+# Шифруем все файлы в директории kubernetes/secrets
+kubernetes/secrets/** filter=git-crypt diff=git-crypt
+kubernetes/secrets/*.yaml filter=git-crypt diff=git-crypt
+kubernetes/secrets/*.yml filter=git-crypt diff=git-crypt
+
+# Не шифруем примеры конфигураций
+kubernetes/secrets/*.example filter= diff=
+kubernetes/secrets/*.example.yaml filter= diff=
+kubernetes/secrets/*.example.yml filter= diff=
+
+# Шифруем конфигурации кластера
+kubernetes/cluster-config/** filter=git-crypt diff=git-crypt
+kubernetes/kubeconfig.yaml filter=git-crypt diff=git-crypt
+
+# Шифруем переменные окружения
+.env filter=git-crypt diff=git-crypt
+.env.* filter=git-crypt diff=git-crypt
+!.env.example filter= diff= 

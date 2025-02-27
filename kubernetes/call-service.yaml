@@ -1,0 +1,221 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: call-service
+  namespace: messenger
+  labels:
+    app: call-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: call-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: call-service
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3003"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: call-service
+        image: gcr.io/teleport-450320/call-service:latest
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 3003
+        - name: ws
+          containerPort: 8083
+        resources:
+          limits:
+            cpu: 20m
+            memory: 128Mi
+          requests:
+            cpu: 5m
+            memory: 64Mi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 40
+          periodSeconds: 20
+          timeoutSeconds: 3
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "3003"
+        - name: WS_PORT
+          value: "8083"
+        - name: MONGODB_URI
+          valueFrom:
+            secretKeyRef:
+              name: mongodb-secret
+              key: uri
+        - name: POSTGRES_HOST
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: host
+        - name: POSTGRES_PORT
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: port
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: database
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: user
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: password
+        - name: REDIS_HOST
+          valueFrom:
+            secretKeyRef:
+              name: redis-secret
+              key: host
+        - name: REDIS_PORT
+          valueFrom:
+            secretKeyRef:
+              name: redis-secret
+              key: port
+        - name: REDIS_USER
+          valueFrom:
+            secretKeyRef:
+              name: redis-secret
+              key: user
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: redis-secret
+              key: password
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: jwt-secret
+              key: secret
+        - name: KAFKA_BROKERS
+          valueFrom:
+            secretKeyRef:
+              name: kafka-secret
+              key: brokers
+        - name: KAFKA_SSL
+          valueFrom:
+            secretKeyRef:
+              name: kafka-secret
+              key: ssl
+        - name: KAFKA_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: kafka-secret
+              key: username
+        - name: KAFKA_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kafka-secret
+              key: password
+        - name: KAFKA_SASL_MECHANISM
+          valueFrom:
+            secretKeyRef:
+              name: kafka-secret
+              key: mechanism
+      imagePullSecrets:
+      - name: gcr-json-key
+      volumes:
+      - name: swagger-config
+        configMap:
+          name: swagger-config
+      - name: postgres-secrets
+        secret:
+          secretName: postgres-secret
+      - name: jwt-secrets
+        secret:
+          secretName: jwt-secret
+      - name: redis-secrets
+        secret:
+          secretName: redis-secret
+      - name: kafka-secrets
+        secret:
+          secretName: kafka-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: call-service
+  namespace: messenger
+  labels:
+    app: call-service
+spec:
+  selector:
+    app: call-service
+  ports:
+    - name: http
+      protocol: TCP
+      port: 3003
+      targetPort: 3003
+    - name: ws
+      protocol: TCP
+      port: 8083
+      targetPort: 8083
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: call-service
+  namespace: messenger
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: call-service
+  minReplicas: 0
+  maxReplicas: 1
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Pods
+        value: 1
+        periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Pods
+        value: 1
+        periodSeconds: 60 

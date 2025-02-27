@@ -1,0 +1,97 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: swagger-service-config
+  namespace: messenger
+data:
+  PORT: "8080"
+  CORS_ORIGIN: "*"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: swagger-service
+  namespace: messenger
+spec:
+  selector:
+    app: swagger-service
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: swagger-service
+  namespace: messenger
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: swagger-service
+  template:
+    metadata:
+      labels:
+        app: swagger-service
+    spec:
+      containers:
+        - name: swagger-service
+          image: swaggerapi/swagger-ui:latest
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: BASE_URL
+              value: "/api/docs"
+            - name: SWAGGER_JSON
+              value: "/etc/swagger/swagger.yaml"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 30m
+              memory: 64Mi
+          volumeMounts:
+            - name: swagger-config
+              mountPath: /etc/swagger
+          livenessProbe:
+            httpGet:
+              path: /api/docs
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /api/docs
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+      volumes:
+        - name: swagger-config
+          configMap:
+            name: swagger-config
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: swagger-service-ingress
+  namespace: messenger
+  annotations:
+    kubernetes.io/ingress.class: "traefik"
+    traefik.ingress.kubernetes.io/router.entrypoints: "web"
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /api/docs
+            pathType: Prefix
+            backend:
+              service:
+                name: swagger-service
+                port:
+                  number: 80 

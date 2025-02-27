@@ -1,0 +1,19 @@
+steps:
+# Сборка Docker образа
+- name: 'gcr.io/cloud-builders/docker'
+  args: [
+    'build',
+    '-t', 'gcr.io/$PROJECT_ID/call-service:latest',
+    '.'
+  ]
+
+# Отправка образа в Container Registry
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', 'gcr.io/$PROJECT_ID/call-service:latest']
+
+timeout: '1800s'
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+images:
+- 'gcr.io/$PROJECT_ID/call-service:latest' 

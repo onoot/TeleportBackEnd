@@ -1,0 +1,1907 @@
+openapi: 3.0.3
+info:
+  title: Messenger API
+  version: 1.0.1
+  description: API мессенджера
+servers:
+  - url: /api
+    description: REST API сервера
+  - url: ws://localhost:8083
+    description: WebSocket сервер для звонков
+security:
+  - BearerAuth: []
+tags:
+  - name: Пользователи
+    description: Методы для работы с пользователями
+  - name: Сообщения
+    description: Методы для работы с сообщениями
+  - name: Звонки и Комнаты
+    description: Методы для работы с видео и аудио звонками, а также комнатами
+  - name: Уведомления
+    description: Методы для работы с уведомлениями
+paths:
+  # User Service
+  /v1/users/health:
+    get:
+      security: []  # Отключаем авторизацию для health check
+      tags:
+        - Пользователи
+      summary: Проверка работоспособности сервиса
+      responses:
+        '200':
+          description: Сервис работает
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+  /v1/users/register:
+    post:
+      security: []  # Отключаем авторизацию для регистрации
+      tags:
+        - Пользователи
+      summary: Регистрация нового пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - email
+                - password
+              properties:
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 30
+                  description: Имя пользователя
+                  example: "testuser"
+                email:
+                  type: string
+                  format: email
+                  description: Email пользователя
+                  example: "test@example.com"
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  description: Пароль пользователя
+                  example: "password123"
+                settings:
+                  type: object
+                  description: Настройки пользователя (опционально)
+                  properties:
+                    notifications:
+                      type: boolean
+                      description: Включены ли уведомления
+                      example: true
+                    theme:
+                      type: string
+                      enum: [light, dark]
+                      description: Тема интерфейса
+                      example: "light"
+                    language:
+                      type: string
+                      description: Язык интерфейса
+                      example: "ru"
+      responses:
+        '201':
+          description: Пользователь успешно зарегистрирован
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    description: JWT токен для авторизации
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      username:
+                        type: string
+                      email:
+                        type: string
+                        format: email
+                      avatar:
+                        type: string
+                        nullable: true
+                      status:
+                        type: string
+                        enum: [online, offline]
+                      settings:
+                        type: object
+                        properties:
+                          notifications:
+                            type: boolean
+                          theme:
+                            type: string
+                            enum: [light, dark]
+                          language:
+                            type: string
+        '400':
+          description: Ошибка валидации или пользователь уже существует
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                    example: 400
+                  message:
+                    type: string
+                    example: "Пользователь с таким email уже существует"
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "Ошибка при регистрации пользователя"
+  /v1/users/login:
+    post:
+      security: []  # Отключаем авторизацию для логина
+      tags:
+        - Пользователи
+      summary: Вход в систему
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  description: Email пользователя
+                  example: "user@example.com"
+                password:
+                  type: string
+                  format: password
+                  description: Пароль пользователя
+                  example: "password123"
+      responses:
+        '200':
+          description: Успешная авторизация
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    description: JWT токен для авторизации
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      username:
+                        type: string
+                      email:
+                        type: string
+                        format: email
+                      avatar:
+                        type: string
+                        nullable: true
+                      status:
+                        type: string
+                        enum: [online, offline]
+                      settings:
+                        type: object
+                        properties:
+                          notifications:
+                            type: boolean
+                          theme:
+                            type: string
+                            enum: [light, dark]
+                          language:
+                            type: string
+        '401':
+          description: Неверные учетные данные
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                    example: 401
+                  message:
+                    type: string
+                    example: "Неверный email или пароль"
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "Ошибка при входе в систему"
+  /v1/users/profile:
+    get:
+      tags:
+        - Пользователи
+      summary: Получение профиля пользователя
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Профиль пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+    put:
+      tags:
+        - Пользователи
+      summary: Обновление профиля
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                avatar:
+                  type: string
+                settings:
+                  type: object
+                  properties:
+                    notifications:
+                      type: boolean
+                    theme:
+                      type: string
+                      enum: [light, dark]
+                    language:
+                      type: string
+      responses:
+        '200':
+          description: Профиль обновлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+
+  # Message Service
+  /v1/messages/dialogs/{userId}:
+    get:
+      tags:
+        - Сообщения
+      summary: Получить сообщения диалога
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID пользователя, с которым ведется диалог
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+          description: Номер страницы
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+          description: Количество сообщений на странице
+      responses:
+        '200':
+          description: Список сообщений
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Message'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+    post:
+      tags:
+        - Сообщения
+      summary: Отправить личное сообщение
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID получателя сообщения
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+      responses:
+        '201':
+          description: Сообщение отправлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+
+  /v1/messages/{messageId}:
+    put:
+      tags:
+        - Сообщения
+      summary: Редактировать сообщение
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID сообщения
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EditMessageRequest'
+      responses:
+        '200':
+          description: Сообщение отредактировано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+    delete:
+      tags:
+        - Сообщения
+      summary: Удалить сообщение
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID сообщения
+      responses:
+        '200':
+          description: Сообщение удалено
+
+  /v1/messages/{messageId}/reactions:
+    post:
+      tags:
+        - Сообщения
+      summary: Добавить реакцию к сообщению
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID сообщения
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddReactionRequest'
+      responses:
+        '200':
+          description: Реакция добавлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+    delete:
+      tags:
+        - Сообщения
+      summary: Удалить реакцию с сообщения
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID сообщения
+        - name: emoji
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Эмодзи реакции
+      responses:
+        '200':
+          description: Реакция удалена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+
+  # Call Service
+  /v1/calls/user/{userId}:
+    post:
+      tags:
+        - Звонки и Комнаты
+      summary: Позвонить пользователю
+      description: Создает приватную комнату и инициирует прямой звонок конкретному пользователю
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID пользователя, которому звоним
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - type
+              properties:
+                type:
+                  type: string
+                  enum: [audio, video]
+                  description: Тип звонка
+                  example: "audio"
+      responses:
+        '201':
+          description: Звонок успешно инициирован
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                    example: 201
+                  data:
+                    type: object
+                    properties:
+                      call:
+                        $ref: '#/components/schemas/Call'
+                      room:
+                        $ref: '#/components/schemas/Room'
+        '400':
+          description: Неверные параметры запроса
+        '409':
+          description: Пользователь уже в звонке
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                    example: 409
+                  message:
+                    type: string
+                    example: "У пользователя уже есть активный звонок"
+
+  /v1/calls/join/{roomId}:
+    post:
+      tags:
+        - Звонки и Комнаты
+      summary: Присоединиться к звонку
+      description: Присоединяется к существующему звонку в комнате
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID комнаты со звонком
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - type
+              properties:
+                type:
+                  type: string
+                  enum: [audio, video]
+                  description: Тип подключения к звонку
+                  example: "audio"
+      responses:
+        '200':
+          description: Успешное присоединение к звонку
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                    example: 200
+                  data:
+                    $ref: '#/components/schemas/Call'
+        '400':
+          description: Неверные параметры запроса
+        '403':
+          description: Нет доступа к комнате
+        '404':
+          description: Звонок не найден
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: "В комнате нет активного звонка"
+        '409':
+          description: Пользователь уже в звонке
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                    example: 409
+                  message:
+                    type: string
+                    example: "У пользователя уже есть активный звонок"
+
+  /v1/calls/{callId}/accept:
+    put:
+      tags:
+        - Звонки и Комнаты
+      summary: Принять звонок
+      description: Принимает входящий звонок и подключается к нему
+      parameters:
+        - name: callId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID звонка
+      responses:
+        '200':
+          description: Звонок успешно принят
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                    example: 200
+                  data:
+                    $ref: '#/components/schemas/Call'
+        '404':
+          description: Звонок не найден
+        '409':
+          description: Невозможно принять звонок в текущем статусе
+
+  /v1/calls/{callId}/reject:
+    post:
+      tags:
+        - Звонки и Комнаты
+      summary: Отклонить звонок
+      description: Отклоняет входящий звонок
+      parameters:
+        - name: callId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID звонка
+      responses:
+        '200':
+          description: Звонок успешно отклонен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                    example: 200
+                  data:
+                    $ref: '#/components/schemas/Call'
+        '404':
+          description: Звонок не найден
+        '409':
+          description: Невозможно отклонить звонок
+
+  /v1/calls/{callId}/end:
+    post:
+      tags:
+        - Звонки и Комнаты
+      summary: Завершить звонок
+      description: Завершает текущий звонок
+      parameters:
+        - name: callId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID звонка
+      responses:
+        '200':
+          description: Звонок успешно завершен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                    example: 200
+                  data:
+                    $ref: '#/components/schemas/Call'
+        '404':
+          description: Звонок не найден
+        '409':
+          description: Звонок уже завершен
+
+  /v1/calls/{callId}/signal:
+    post:
+      tags:
+        - Звонки и Комнаты
+      summary: Отправить WebRTC сигнал
+      description: Отправляет сигнальное сообщение WebRTC другому участнику звонка
+      parameters:
+        - name: callId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID звонка
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignalingMessage'
+      responses:
+        '200':
+          description: Сигнал успешно отправлен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                    example: 200
+                  data:
+                    type: object
+                    properties:
+                      success:
+                        type: boolean
+                        example: true
+        '404':
+          description: Звонок не найден
+        '400':
+          description: Неверный формат сигнала
+
+  /v1/calls/{callId}/invite:
+    post:
+      tags:
+        - Звонки и Комнаты
+      summary: Сгенерировать приглашение в комнату звонка
+      description: Создает новый код приглашения для присоединения к комнате звонка
+      parameters:
+        - name: callId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID звонка
+      responses:
+        '200':
+          description: Приглашение успешно создано
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                    example: 200
+                  data:
+                    type: object
+                    properties:
+                      invite_code:
+                        type: string
+                        description: Код приглашения
+                      room:
+                        $ref: '#/components/schemas/Room'
+                      call:
+                        $ref: '#/components/schemas/Call'
+        '403':
+          description: Нет доступа к комнате
+        '404':
+          description: Звонок не найден
+        '500':
+          description: Ошибка при генерации приглашения
+
+  # Room Service
+  /v1/rooms:
+    get:
+      tags:
+        - Комнаты
+      summary: Получить список всех комнат пользователя
+      description: Возвращает список комнат, в которых участвует пользователь
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Список комнат
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                    example: 200
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Room'
+        '401':
+          description: Отсутствует токен авторизации
+        '500':
+          description: Ошибка при получении списка комнат
+    post:
+      tags:
+        - Комнаты
+      summary: Создать новую комнату
+      description: Создает новую комнату для звонков
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  description: Название комнаты
+                  example: "Моя комната"
+      responses:
+        '201':
+          description: Комната успешно создана
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                    example: 201
+                  data:
+                    $ref: '#/components/schemas/Room'
+        '401':
+          description: Отсутствует токен авторизации
+        '500':
+          description: Ошибка при создании комнаты
+
+  /v1/rooms/{roomId}:
+    get:
+      tags:
+        - Комнаты
+      summary: Получить информацию о комнате
+      description: Возвращает детальную информацию о комнате
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID комнаты
+      responses:
+        '200':
+          description: Информация о комнате
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                    example: 200
+                  data:
+                    $ref: '#/components/schemas/Room'
+        '401':
+          description: Отсутствует токен авторизации
+        '403':
+          description: Нет доступа к комнате
+        '404':
+          description: Комната не найдена
+        '500':
+          description: Ошибка при получении информации о комнате
+
+  /v1/rooms/join/{inviteCode}:
+    post:
+      tags:
+        - Комнаты
+      summary: Присоединиться к комнате по коду приглашения
+      description: Присоединяется к комнате, используя код приглашения
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: inviteCode
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Код приглашения в комнату
+      responses:
+        '200':
+          description: Успешное присоединение к комнате
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                    example: 200
+                  data:
+                    $ref: '#/components/schemas/Room'
+        '401':
+          description: Отсутствует токен авторизации
+        '404':
+          description: Комната не найдена или неактивна
+        '500':
+          description: Ошибка при присоединении к комнате
+
+  /v1/rooms/{roomId}/join:
+    post:
+      tags:
+        - Комнаты
+      summary: Присоединиться к комнате по ID
+      description: Присоединяется к комнате, используя её ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID комнаты
+      responses:
+        '200':
+          description: Успешное присоединение к комнате
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                    example: 200
+                  data:
+                    $ref: '#/components/schemas/Room'
+        '401':
+          description: Отсутствует токен авторизации
+        '404':
+          description: Комната не найдена
+        '500':
+          description: Ошибка при присоединении к комнате
+
+  /v1/rooms/{roomId}/leave:
+    post:
+      tags:
+        - Комнаты
+      summary: Покинуть комнату
+      description: Покидает указанную комнату
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID комнаты
+      responses:
+        '200':
+          description: Успешный выход из комнаты
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                    example: 200
+                  data:
+                    type: object
+                    properties:
+                      success:
+                        type: boolean
+                        example: true
+        '401':
+          description: Отсутствует токен авторизации
+        '404':
+          description: Участник не найден в комнате
+        '500':
+          description: Ошибка при выходе из комнаты
+
+  /v1/rooms/{roomId}/participants:
+    get:
+      tags:
+        - Комнаты
+      summary: Получить список участников комнаты
+      description: Возвращает список всех участников комнаты
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID комнаты
+      responses:
+        '200':
+          description: Список участников
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                    example: 200
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RoomParticipant'
+        '401':
+          description: Отсутствует токен авторизации
+        '403':
+          description: Нет доступа к комнате
+        '500':
+          description: Ошибка при получении списка участников
+
+  # Channel Service
+  /v1/channels:
+    get:
+      tags:
+        - Каналы
+      summary: Получить список каналов
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Список каналов
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Channel'
+    post:
+      tags:
+        - Каналы
+      summary: Создать новый канал
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                isPrivate:
+                  type: boolean
+      responses:
+        '201':
+          description: Канал создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Channel'
+
+  /v1/channels/{channelId}:
+    get:
+      tags:
+        - Каналы
+      summary: Получить информацию о канале
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID канала
+      responses:
+        '200':
+          description: Информация о канале
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Channel'
+    put:
+      tags:
+        - Каналы
+      summary: Обновить информацию о канале
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID канала
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                isPrivate:
+                  type: boolean
+      responses:
+        '200':
+          description: Канал обновлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Channel'
+    delete:
+      tags:
+        - Каналы
+      summary: Удалить канал
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID канала
+      responses:
+        '200':
+          description: Канал удален
+
+  /v1/channels/{channelId}/members:
+    get:
+      tags:
+        - Каналы
+      summary: Получить список участников канала
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID канала
+      responses:
+        '200':
+          description: Список участников
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+    post:
+      tags:
+        - Каналы
+      summary: Добавить участника в канал
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: channelId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID канала
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - userId
+              properties:
+                userId:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Участник добавлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Channel'
+
+  # Notification Service
+  /v1/notifications:
+    get:
+      tags:
+        - Уведомления
+      summary: Получить список уведомлений
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+          description: Номер страницы
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+          description: Количество уведомлений на странице
+      responses:
+        '200':
+          description: Список уведомлений
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notifications:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Notification'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  /v1/notifications/unread:
+    get:
+      tags:
+        - Уведомления
+      summary: Получить количество непрочитанных уведомлений
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Количество непрочитанных уведомлений
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+
+  /v1/notifications/{notificationId}/read:
+    post:
+      tags:
+        - Уведомления
+      summary: Отметить уведомление как прочитанное
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: ID уведомления
+      responses:
+        '200':
+          description: Уведомление отмечено как прочитанное
+
+  /ws:
+    get:
+      tags:
+        - Звонки и Комнаты
+      summary: WebSocket подключение для звонков
+      description: |
+        Установка WebSocket соединения для обмена WebRTC сигналами.
+        
+        ### Подключение
+        ```
+        ws://localhost:8083?token=JWT_TOKEN
+        ```
+
+        ### Сообщения
+        
+        #### Отправка offer:
+        ```json
+        {
+          "type": "offer",
+          "payload": {
+            "sdp": "v=0\r\n..."
+          },
+          "to": "user-id",
+          "roomId": "room-id"
+        }
+        ```
+
+        #### Отправка answer:
+        ```json
+        {
+          "type": "answer",
+          "payload": {
+            "sdp": "v=0\r\n..."
+          },
+          "to": "user-id",
+          "roomId": "room-id"
+        }
+        ```
+
+        #### Отправка ICE candidate:
+        ```json
+        {
+          "type": "ice-candidate",
+          "payload": {
+            "candidate": "candidate:1234...",
+            "sdpMLineIndex": 0,
+            "sdpMid": "0"
+          },
+          "to": "user-id",
+          "roomId": "room-id"
+        }
+        ```
+
+        ### Получение сообщений
+        Все входящие сообщения имеют поле `from` вместо `to`:
+        ```json
+        {
+          "type": "offer|answer|ice-candidate",
+          "payload": {...},
+          "from": "user-id",
+          "roomId": "room-id"
+        }
+        ```
+
+        ### Ошибки
+        ```json
+        {
+          "type": "error",
+          "message": "Error description"
+        }
+        ```
+      responses:
+        '101':
+          description: WebSocket соединение установлено
+        '401':
+          description: Неверный или отсутствующий токен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    example: "error"
+                  message:
+                    type: string
+                    example: "Authentication failed"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        user:
+          $ref: '#/components/schemas/UserProfile'
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: ID пользователя
+        username:
+          type: string
+        email:
+          type: string
+        avatar:
+          type: string
+        status:
+          type: string
+          enum: [online, offline]
+        settings:
+          type: object
+          properties:
+            notifications:
+              type: boolean
+            theme:
+              type: string
+              enum: [light, dark]
+            language:
+              type: string
+    Message:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: ID сообщения
+        content:
+          type: string
+        senderId:
+          type: integer
+          description: ID отправителя
+        attachments:
+          type: array
+          items:
+            type: string
+        replyToId:
+          type: integer
+          description: ID сообщения, на которое отвечают
+          nullable: true
+        reactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reaction'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SendMessageRequest:
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          type: string
+        attachments:
+          type: array
+          items:
+            type: string
+        replyToId:
+          type: string
+          format: uuid
+          nullable: true
+    EditMessageRequest:
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          type: string
+        attachments:
+          type: array
+          items:
+            type: string
+    AddReactionRequest:
+      type: object
+      required:
+        - emoji
+      properties:
+        emoji:
+          type: string
+          example: "👍"
+    Reaction:
+      type: object
+      properties:
+        userId:
+          type: string
+          format: uuid
+        emoji:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    Call:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: ID звонка
+        room_id:
+          type: string
+          format: uuid
+          description: ID комнаты
+        initiator_id:
+          type: string
+          format: uuid
+          description: ID инициатора звонка
+        type:
+          type: string
+          enum: [audio, video]
+          description: Тип звонка
+        status:
+          type: string
+          enum: [initiated, connected, ended, rejected]
+          description: Статус звонка
+        start_time:
+          type: string
+          format: date-time
+          description: Время начала звонка
+        end_time:
+          type: string
+          format: date-time
+          description: Время завершения звонка
+        duration:
+          type: integer
+          description: Длительность звонка в секундах
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    Channel:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: ID канала
+        name:
+          type: string
+        description:
+          type: string
+        isPrivate:
+          type: boolean
+        creatorId:
+          type: integer
+          description: ID создателя канала
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: ID пользователя
+        username:
+          type: string
+        email:
+          type: string
+        avatar:
+          type: string
+        status:
+          type: string
+          enum: [online, offline]
+    Notification:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: ID уведомления
+        type:
+          type: string
+          enum: [message, call, channel, friend_request]
+        content:
+          type: string
+        data:
+          type: object
+        isRead:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        hasMore:
+          type: boolean
+    Room:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: ID комнаты
+        name:
+          type: string
+          description: Название комнаты
+        created_by:
+          type: string
+          format: uuid
+          description: ID создателя комнаты
+        invite_code:
+          type: string
+          description: Код приглашения в комнату
+        is_active:
+          type: boolean
+          description: Активна ли комната
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    RoomParticipant:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: ID записи участника
+        room_id:
+          type: string
+          format: uuid
+          description: ID комнаты
+        user_id:
+          type: string
+          format: uuid
+          description: ID пользователя
+        is_admin:
+          type: boolean
+          description: Является ли администратором комнаты
+        joined_at:
+          type: string
+          format: date-time
+          description: Время присоединения к комнате
+        left_at:
+          type: string
+          format: date-time
+          description: Время выхода из комнаты
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    SignalingMessage:
+      type: object
+      required:
+        - type
+        - payload
+        - to
+      properties:
+        type:
+          type: string
+          enum: [offer, answer, ice-candidate]
+          description: Тип сигнала WebRTC
+        payload:
+          type: object
+          description: Данные сигнала
+        from:
+          type: string
+          format: uuid
+          description: ID отправителя сигнала
+        to:
+          type: string
+          format: uuid
+          description: ID получателя сигнала
+        roomId:
+          type: string
+          format: uuid
+          description: ID комнаты звонка
+    WebSocketMessage:
+      type: object
+      required:
+        - type
+        - payload
+      properties:
+        type:
+          type: string
+          enum:
+            - offer
+            - answer
+            - ice-candidate
+            - error
+        payload:
+          type: object
+          description: Данные сигнала WebRTC (SDP или ICE candidate)
+        from:
+          type: string
+          format: uuid
+          description: ID отправителя (только в получаемых сообщениях)
+        to:
+          type: string
+          format: uuid
+          description: ID получателя (только в отправляемых сообщениях)
+        roomId:
+          type: string
+          format: uuid
+          description: ID комнаты звонка
+        message:
+          type: string
+          description: Текст ошибки (только для type=error)
+    Call:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: ID звонка
+        room_id:
+          type: string
+          format: uuid
+          description: ID комнаты
+        initiator_id:
+          type: string
+          format: uuid
+          description: ID инициатора звонка
+        type:
+          type: string
+          enum: [audio, video]
+          description: Тип звонка
+        status:
+          type: string
+          enum: [initiated, connected, ended, rejected]
+          description: Статус звонка
+        start_time:
+          type: string
+          format: date-time
+          description: Время начала звонка
+        end_time:
+          type: string
+          format: date-time
+          description: Время завершения звонка
+        duration:
+          type: integer
+          description: Длительность звонка в секундах
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    Channel:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: ID канала
+        name:
+          type: string
+        description:
+          type: string
+        isPrivate:
+          type: boolean
+        creatorId:
+          type: integer
+          description: ID создателя канала
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: ID пользователя
+        username:
+          type: string
+        email:
+          type: string
+        avatar:
+          type: string
+        status:
+          type: string
+          enum: [online, offline]
+    Notification:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: ID уведомления
+        type:
+          type: string
+          enum: [message, call, channel, friend_request]
+        content:
+          type: string
+        data:
+          type: object
+        isRead:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        hasMore:
+          type: boolean
+    Room:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: ID комнаты
+        name:
+          type: string
+          description: Название комнаты
+        created_by:
+          type: string
+          format: uuid
+          description: ID создателя комнаты
+        invite_code:
+          type: string
+          description: Код приглашения в комнату
+        is_active:
+          type: boolean
+          description: Активна ли комната
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    RoomParticipant:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: ID записи участника
+        room_id:
+          type: string
+          format: uuid
+          description: ID комнаты
+        user_id:
+          type: string
+          format: uuid
+          description: ID пользователя
+        is_admin:
+          type: boolean
+          description: Является ли администратором комнаты
+        joined_at:
+          type: string
+          format: date-time
+          description: Время присоединения к комнате
+        left_at:
+          type: string
+          format: date-time
+          description: Время выхода из комнаты
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    SignalingMessage:
+      type: object
+      required:
+        - type
+        - payload
+        - to
+      properties:
+        type:
+          type: string
+          enum: [offer, answer, ice-candidate]
+          description: Тип сигнала WebRTC
+        payload:
+          type: object
+          description: Данные сигнала
+        from:
+          type: string
+          format: uuid
+          description: ID отправителя сигнала
+        to:
+          type: string
+          format: uuid
+          description: ID получателя сигнала
+        roomId:
+          type: string
+          format: uuid
+          description: ID комнаты звонка 

@@ -1,0 +1,41 @@
+apiVersion: container.gcp.upbound.io/v1beta1
+kind: Cluster
+metadata:
+  name: messenger-cluster
+spec:
+  forProvider:
+    location: europe-central2
+    initialNodeCount: 3
+    networkConfig:
+      enableIntraNodeVisibility: true
+    privateClusterConfig:
+      enablePrivateNodes: true
+      enablePrivateEndpoint: false
+      masterIpv4CidrBlock: "172.16.0.0/28"
+    masterAuth:
+      clientCertificateConfig:
+        issueClientCertificate: false
+    nodeConfig:
+      machineType: e2-standard-2
+      diskSizeGb: 50
+      diskType: pd-standard
+      oauthScopes:
+        - https://www.googleapis.com/auth/devstorage.read_only
+        - https://www.googleapis.com/auth/logging.write
+        - https://www.googleapis.com/auth/monitoring
+        - https://www.googleapis.com/auth/servicecontrol
+        - https://www.googleapis.com/auth/service.management.readonly
+        - https://www.googleapis.com/auth/trace.append
+    releaseChannel:
+      channel: REGULAR
+    networkPolicy:
+      enabled: true
+    addonsConfig:
+      httpLoadBalancing:
+        disabled: false
+      horizontalPodAutoscaling:
+        disabled: false
+      networkPolicyConfig:
+        disabled: false
+    workloadIdentityConfig:
+      workloadPool: "${PROJECT_ID}.svc.id.goog" 

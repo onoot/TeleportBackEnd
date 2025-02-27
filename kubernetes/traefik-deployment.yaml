@@ -1,0 +1,153 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: traefik
+  namespace: messenger
+  labels:
+    app: traefik
+
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: traefik
+  labels:
+    app: traefik
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - services
+      - endpoints
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - extensions
+      - networking.k8s.io
+    resources:
+      - ingresses
+      - ingressclasses
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - extensions
+      - networking.k8s.io
+    resources:
+      - ingresses/status
+    verbs:
+      - update
+
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: traefik
+  labels:
+    app: traefik
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: traefik
+subjects:
+  - kind: ServiceAccount
+    name: traefik
+    namespace: messenger
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: traefik
+  namespace: messenger
+  labels:
+    app: traefik
+spec:
+  type: LoadBalancer
+  ports:
+    - name: web
+      port: 80
+      targetPort: web
+    - name: websecure
+      port: 443
+      targetPort: websecure
+    - name: admin
+      port: 8080
+      targetPort: admin
+  selector:
+    app: traefik
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traefik
+  namespace: messenger
+  labels:
+    app: traefik
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: traefik
+  template:
+    metadata:
+      labels:
+        app: traefik
+    spec:
+      serviceAccountName: traefik
+      containers:
+        - name: traefik
+          image: traefik:v2.10
+          args:
+            - --api.insecure=true
+            - --providers.kubernetesingress
+            - --entrypoints.web.address=:8000
+            - --entrypoints.websecure.address=:8443
+            - --entrypoints.admin.address=:9000
+            - --api.dashboard=true
+            - --ping=true
+            - --ping.entrypoint=admin
+            - --log.level=INFO
+          ports:
+            - name: web
+              containerPort: 8000
+            - name: websecure
+              containerPort: 8443
+            - name: admin
+              containerPort: 9000
+          resources:
+            limits:
+              cpu: 30m
+              memory: 64Mi
+            requests:
+              cpu: 10m
+              memory: 32Mi
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: admin
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 2
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: admin
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 2
+
+---
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: traefik
+  labels:
+    app: traefik
+spec:
+  controller: traefik.io/ingress-controller 
