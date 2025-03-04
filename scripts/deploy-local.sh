@@ -1,116 +1,147 @@
 #!/bin/bash
 
 # Цвета для вывода
-GREEN='\033[0;32m'
 RED='\033[0;31m'
+GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m'
+NC='\033[0m' # No Color
 
-# Функция для вывода статуса
-print_status() {
-    echo -e "${GREEN}==> $1${NC}"
+# Функция для логирования
+log() {
+    echo -e "${GREEN}[INFO]${NC} $1"
 }
 
-# Функция для проверки ошибок
-check_error() {
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Ошибка: $1${NC}"
+error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+warn() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+# Проверка наличия необходимых инструментов
+check_requirements() {
+    log "Проверка необходимых инструментов..."
+    
+    if ! command -v docker &> /dev/null; then
+        error "Docker не установлен"
+        exit 1
+    fi
+    
+    if ! command -v kubectl &> /dev/null; then
+        error "kubectl не установлен"
+        exit 1
+    fi
+    
+    if ! command -v minikube &> /dev/null; then
+        error "minikube не установлен"
         exit 1
     fi
 }
 
-# Проверка и установка необходимых компонентов
-print_status "Проверка необходимых компонентов..."
-
-# Проверка Docker
-if ! command -v docker &> /dev/null; then
-    echo -e "${YELLOW}Docker не установлен. Установка...${NC}"
-    sudo apt-get update
-    sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-    sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
-    sudo apt-get update
-    sudo apt-get install -y docker-ce docker-ce-cli containerd.io
-    sudo usermod -aG docker $USER
-    check_error "Не удалось установить Docker"
-fi
-
-# Проверка kubectl
-if ! command -v kubectl &> /dev/null; then
-    echo -e "${YELLOW}kubectl не установлен. Установка...${NC}"
-    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-    sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
-    rm kubectl
-    check_error "Не удалось установить kubectl"
-fi
-
-# Проверка minikube
-if ! command -v minikube &> /dev/null; then
-    echo -e "${YELLOW}minikube не установлен. Установка...${NC}"
-    curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
-    sudo install minikube-linux-amd64 /usr/local/bin/minikube
-    rm minikube-linux-amd64
-    check_error "Не удалось установить minikube"
-fi
-
 # Запуск minikube если не запущен
-print_status "Проверка статуса minikube..."
-if ! minikube status | grep -q "Running"; then
-    print_status "Запуск minikube..."
-    minikube start --driver=docker --memory=4096 --cpus=2
-    check_error "Не удалось запустить minikube"
-    
-    print_status "Включение необходимых аддонов..."
-    minikube addons enable ingress
-    minikube addons enable metrics-server
-fi
-
-# Применение конфигураций Kubernetes
-print_status "Применение конфигураций Kubernetes..."
+start_minikube() {
+    log "Проверка статуса minikube..."
+    if ! minikube status | grep -q "Running"; then
+        log "Запуск minikube..."
+        minikube start
+    else
+        log "minikube уже запущен"
+    fi
+}
 
 # Создание namespace если не существует
-if ! kubectl get namespace messenger &> /dev/null; then
-    print_status "Создание namespace messenger..."
-    kubectl create namespace messenger
-    check_error "Не удалось создать namespace"
-fi
-
-# Список конфигураций для применения
-configs=(
-    "kubernetes/secrets.yaml"
-    "kubernetes/configmap.yaml"
-    "kubernetes/rbac.yaml"
-    "kubernetes/network-config.yaml"
-    "kubernetes/user-service.yaml"
-    "kubernetes/message-service.yaml"
-    "kubernetes/channel-service.yaml"
-    "kubernetes/notification-service.yaml"
-    "kubernetes/traefik-deployment.yaml"
-    "kubernetes/ingress.yaml"
-)
-
-# Применение конфигураций
-for config in "${configs[@]}"; do
-    if [ -f "$config" ]; then
-        print_status "Применение $config..."
-        kubectl apply -f "$config"
-        check_error "Не удалось применить $config"
+create_namespace() {
+    log "Создание namespace messenger..."
+    if ! kubectl get namespace messenger &> /dev/null; then
+        kubectl create namespace messenger
+        log "Namespace messenger создан"
     else
-        echo -e "${YELLOW}Файл $config не найден, пропускаем...${NC}"
+        log "Namespace messenger уже существует"
     fi
-done
+}
 
-# Ожидание запуска подов
-print_status "Ожидание запуска подов..."
-kubectl wait --for=condition=ready pod -l app=user-service -n messenger --timeout=300s
-kubectl wait --for=condition=ready pod -l app=message-service -n messenger --timeout=300s
-kubectl wait --for=condition=ready pod -l app=channel-service -n messenger --timeout=300s
-kubectl wait --for=condition=ready pod -l app=notification-service -n messenger --timeout=300s
+# Применение конфигураций Kubernetes
+apply_configs() {
+    log "Применение конфигураций Kubernetes..."
+    
+    # Применяем основные конфигурации
+    kubectl apply -f kubernetes/namespace.yaml
+    kubectl apply -f kubernetes/configmap.yaml
+    kubectl apply -f kubernetes/secrets.yaml
+    
+    # Применяем конфигурации сервисов
+    kubectl apply -f kubernetes/user-service.yaml
+    kubectl apply -f kubernetes/message-service.yaml
+    kubectl apply -f kubernetes/channel-service.yaml
+    kubectl apply -f kubernetes/call-service.yaml
+    kubectl apply -f kubernetes/notification-service.yaml
+    
+    # Применяем конфигурации для мониторинга
+    kubectl apply -f kubernetes/monitoring/
+    
+    # Применяем конфигурации для сети
+    kubectl apply -f kubernetes/network-config.yaml
+    kubectl apply -f kubernetes/ingress.yaml
+}
 
-# Вывод информации о доступе
-print_status "Развертывание завершено!"
-print_status "Список сервисов:"
-kubectl get services -n messenger
+# Сборка и загрузка Docker образов
+build_images() {
+    log "Сборка Docker образов..."
+    
+    # Переключаем Docker для работы с minikube
+    eval $(minikube docker-env)
+    
+    # Сборка образов сервисов
+    docker build -t local/user-service:latest ./src/services/user-service
+    docker build -t local/message-service:latest ./src/services/message-service
+    docker build -t local/channel-service:latest ./src/services/channel-service
+    docker build -t local/call-service:latest ./src/services/call-service
+    docker build -t local/notification-service:latest ./src/services/notification-service
+}
 
-print_status "Для доступа к сервисам используйте:"
-echo "minikube service list -n messenger" 
+# Проверка статуса развертывания
+check_deployment() {
+    log "Проверка статуса развертывания..."
+    
+    # Ждем, пока все поды будут готовы
+    kubectl wait --for=condition=ready pod -l app -n messenger --timeout=300s
+    
+    # Проверяем статус сервисов
+    kubectl get pods -n messenger
+    kubectl get services -n messenger
+}
+
+# Настройка ingress
+setup_ingress() {
+    log "Настройка ingress..."
+    
+    # Включаем ingress addon в minikube
+    minikube addons enable ingress
+    
+    # Получаем IP minikube
+    MINIKUBE_IP=$(minikube ip)
+    
+    # Выводим информацию для настройки hosts
+    echo -e "${YELLOW}Добавьте следующие записи в /etc/hosts:${NC}"
+    echo "$MINIKUBE_IP api.messenger.local"
+    echo "$MINIKUBE_IP docs.messenger.local"
+}
+
+# Основная функция
+main() {
+    log "Начало развертывания..."
+    
+    check_requirements
+    start_minikube
+    create_namespace
+    build_images
+    apply_configs
+    check_deployment
+    setup_ingress
+    
+    log "Развертывание завершено успешно!"
+}
+
+# Запуск скрипта
+main 
