@@ -65,6 +65,7 @@ apply_configs() {
     kubectl apply -f kubernetes/configmap.yaml
     kubectl apply -f kubernetes/secrets.yaml
     kubectl apply -f kubernetes/network-config.yaml
+    kubectl apply -f kubernetes/swagger-service.yaml
     
     # Применяем конфигурации сервисов
     log "Применение конфигураций сервисов..."
@@ -74,6 +75,7 @@ apply_configs() {
         "channel-service.yaml"
         "call-service.yaml"
         "notification-service.yaml"
+        "swagger-config.yaml"
     )
     
     for service in "${services[@]}"; do
@@ -90,14 +92,32 @@ apply_configs() {
 check_deployment() {
     log "Проверка статуса развертывания..."
     
+    # Список всех необходимых сервисов
+    required_services=(
+        "call-service"
+        "channel-service"
+        "message-service"
+        "notification-service"
+        "swagger-service"
+        "user-service"
+    )
+    
     # Ждем готовности всех подов
     log "Ожидание готовности подов..."
     kubectl wait --for=condition=ready pod -l app -n messenger --timeout=300s
     
-    # Проверяем статус
-    log "Статус подов:"
-    kubectl get pods -n messenger
+    # Проверяем статус всех компонентов
+    log "Полный статус развертывания:"
+    kubectl get pods,svc,ingress -n messenger -o wide
     
+    # Проверяем статус каждого сервиса
+    log "Проверка статуса отдельных сервисов:"
+    for service in "${required_services[@]}"; do
+        log "Статус $service:"
+        kubectl get pods -n messenger -l app=$service -o wide
+    done
+    
+    # Проверяем доступность сервисов
     log "Статус сервисов:"
     kubectl get services -n messenger
     
