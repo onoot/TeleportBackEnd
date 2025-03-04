@@ -2,6 +2,7 @@ import WebSocket from 'ws';
 import jwt from 'jsonwebtoken';
 import { config } from '../config';
 import { Server } from 'http';
+import { EventEmitter } from 'events';
 
 interface SignalingMessage {
     type: 'offer' | 'answer' | 'ice-candidate';
@@ -11,13 +12,14 @@ interface SignalingMessage {
     roomId: string;
 }
 
-export class WebSocketService {
+export class WebSocketService extends EventEmitter {
     private static instance: WebSocketService;
     private wss: WebSocket.Server;
     private clients: Map<number, WebSocket> = new Map(); // userId -> WebSocket
     private rooms: Map<string, Set<number>> = new Map(); // roomId -> Set<userId>
 
     private constructor(server: Server) {
+        super();
         this.wss = new WebSocket.Server({ server });
         this.setupWebSocket();
     }
@@ -53,37 +55,12 @@ export class WebSocketService {
                 // Обработка сообщений
                 ws.on('message', (message: string) => {
                     try {
-                        const data = JSON.parse(message) as SignalingMessage;
+                        const data = JSON.parse(message);
+                        const { type, ...payload } = data;
                         
-                        // Проверяем, что отправитель находится в комнате
-                        const roomParticipants = this.rooms.get(data.roomId);
-                        if (!roomParticipants?.has(userId)) {
-                            ws.send(JSON.stringify({
-                                type: 'error',
-                                message: 'You are not in this room'
-                            }));
-                            return;
-                        }
+                        // Вызываем обработчики событий
+                        this.emit(type, userId, ...Object.values(payload));
 
-                        // Проверяем, что получатель находится в комнате
-                        if (!roomParticipants.has(data.to)) {
-                            ws.send(JSON.stringify({
-                                type: 'error',
-                                message: 'Target user is not in this room'
-                            }));
-                            return;
-                        }
-
-                        // Отправляем сигнал получателю
-                        const targetWs = this.clients.get(data.to);
-                        if (targetWs) {
-                            targetWs.send(JSON.stringify({
-                                type: data.type,
-                                payload: data.payload,
-                                from: userId,
-                                roomId: data.roomId
-                            }));
-                        }
                     } catch (error) {
                         console.error('Error processing message:', error);
                         ws.send(JSON.stringify({
@@ -100,6 +77,7 @@ export class WebSocketService {
                     this.rooms.forEach((participants, roomId) => {
                         if (participants.has(userId)) {
                             participants.delete(userId);
+                            this.emit('user:disconnected', userId, roomId);
                         }
                     });
                 });

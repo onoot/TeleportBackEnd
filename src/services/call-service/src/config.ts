@@ -47,16 +47,16 @@ console.log('Redis configuration:', {
 });
 
 const kafkaBrokers = getEnvVar('KAFKA_BROKERS', 'localhost:9092');
-const kafkaUsername = getEnvVar('KAFKA_USERNAME', '');
-const kafkaPassword = getEnvVar('KAFKA_PASSWORD', '');
+const kafkaSaslUsername = getEnvVar('KAFKA_SASL_USERNAME', '');
+const kafkaSaslPassword = getEnvVar('KAFKA_SASL_PASSWORD', '');
 const kafkaSsl = getEnvVar('KAFKA_SSL', 'false') === 'true';
 const kafkaSaslMechanism = getEnvVar('KAFKA_SASL_MECHANISM', 'PLAIN').toUpperCase();
 
 console.log('Kafka configuration:', {
   brokers: kafkaBrokers,
   ssl: kafkaSsl,
-  username: kafkaUsername ? '***' : 'not set',
-  password: kafkaPassword ? '***' : 'not set',
+  username: kafkaSaslUsername ? '***' : 'not set',
+  password: kafkaSaslPassword ? '***' : 'not set',
   saslMechanism: kafkaSaslMechanism
 });
 
@@ -65,12 +65,12 @@ export const kafkaConfig = {
   brokers: kafkaBrokers.split(','),
   ssl: kafkaSsl,
   sasl: process.env.KAFKA_SASL_USERNAME && process.env.KAFKA_SASL_PASSWORD
-  ? {
-      mechanism: 'plain',
-      username: process.env.KAFKA_SASL_USERNAME,
-      password: process.env.KAFKA_SASL_PASSWORD,
-    }
-  : undefined,
+    ? {
+        mechanism: 'plain',
+        username: process.env.KAFKA_SASL_USERNAME,
+        password: process.env.KAFKA_SASL_PASSWORD,
+      }
+    : undefined,
 };
 
 const dbHost = getEnvVar('POSTGRES_HOST', 'localhost');

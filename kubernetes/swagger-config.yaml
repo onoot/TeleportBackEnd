@@ -1,1540 +1,462 @@
 apiVersion: v1
-kind: ConfigMap
+kind: Service
 metadata:
-  name: swagger-config
+  name: swagger-service
   namespace: messenger
-data:
-  swagger.yaml: |
-    openapi: 3.0.3
-    info:
-      title: Messenger API
-      version: 1.0.1
-      description: API мессенджера
-    servers:
-      - url: /api
-        description: REST API сервера
-      - url: ws://localhost:8083
-        description: WebSocket сервер для звонков
-    security:
-      - BearerAuth: []
-    tags:
-      - name: Пользователи
-        description: Методы для работы с пользователями
-      - name: Сообщения
-        description: Методы для работы с сообщениями
-      - name: Серверы
-        description: Методы для работы с серверами (группами)
-      - name: Каналы
-        description: Методы для работы с каналами на серверах
-      - name: Звонки
-        description: Методы для работы с видео и аудио звонками
-      - name: Уведомления
-        description: Методы для работы с уведомлениями
-    paths:
-      # User Service
-      /v1/users/health:
-        get:
-          security: []  # Отключаем авторизацию для health check
-          tags:
-            - Пользователи
-          summary: Проверка работоспособности сервиса
-          responses:
-            '200':
-              description: Сервис работает
-              content:
-                application/json:
-                  schema:
-                    type: object
-                    properties:
-                      status:
-                        type: string
-                        example: "ok"
-      /v1/users/register:
-        post:
-          security: []  # Отключаем авторизацию для регистрации
-          tags:
-            - Пользователи
-          summary: Регистрация нового пользователя
-          requestBody:
-            required: true
-            content:
-              application/json:
-                schema:
-                  type: object
-                  required:
-                    - username
-                    - email
-                    - password
-                  properties:
-                    username:
-                      type: string
-                      minLength: 3
-                      maxLength: 30
-                      description: Имя пользователя
-                      example: "testuser"
-                    email:
-                      type: string
-                      format: email
-                      description: Email пользователя
-                      example: "test@example.com"
-                    password:
-                      type: string
-                      format: password
-                      minLength: 8
-                      description: Пароль пользователя
-                      example: "password123"
-                    settings:
-                      type: object
-                      description: Настройки пользователя (опционально)
-                      properties:
-                        notifications:
-                          type: boolean
-                          description: Включены ли уведомления
-                          example: true
-                        theme:
-                          type: string
-                          enum: [light, dark]
-                          description: Тема интерфейса
-                          example: "light"
-                        language:
-                          type: string
-                          description: Язык интерфейса
-                          example: "ru"
-          responses:
-            '201':
-              description: Пользователь успешно зарегистрирован
-              content:
-                application/json:
-                  schema:
-                    $ref: '#/components/schemas/AuthResponse'
-            '400':
-              description: Ошибка валидации или пользователь уже существует
-              content:
-                application/json:
-                  schema:
-                    type: object
-                    properties:
-                      status:
-                        type: integer
-                        example: 400
-                      message:
-                        type: string
-                        example: "Пользователь с таким email уже существует"
-      /v1/users/login:
-        post:
-          security: []  # Отключаем авторизацию для логина
-          tags:
-            - Пользователи
-          summary: Вход в систему
-          requestBody:
-            required: true
-            content:
-              application/json:
-                schema:
-                  type: object
-                  required:
-                    - email
-                    - password
-                  properties:
-                    email:
-                      type: string
-                      format: email
-                      description: Email пользователя
-                      example: "user@example.com"
-                    password:
-                      type: string
-                      format: password
-                      description: Пароль пользователя
-                      example: "password123"
-          responses:
-            '200':
-              description: Успешная авторизация
-              content:
-                application/json:
-                  schema:
-                    $ref: '#/components/schemas/AuthResponse'
-            '401':
-              description: Неверные учетные данные
-              content:
-                application/json:
-                  schema:
-                    type: object
-                    properties:
-                      status:
-                        type: integer
-                        example: 401
-                      message:
-                        type: string
-                        example: "Неверный email или пароль"
-      /v1/users/profile:
-        get:
-          tags:
-            - Пользователи
-          summary: Получение профиля пользователя
-          security:
-            - BearerAuth: []
-          responses:
-            '200':
-              description: Профиль пользователя
-              content:
-                application/json:
-                  schema:
-                    $ref: '#/components/schemas/UserProfile'
-        put:
-          tags:
-            - Пользователи
-          summary: Обновление профиля пользователя
-          security:
-            - BearerAuth: []
-          requestBody:
-            required: true
-            content:
-              application/json:
-                schema:
-                  type: object
-                  properties:
-                    username:
-                      type: string
-                      minLength: 3
-                      maxLength: 30
-                    avatar:
-                      type: string
-                      format: uri
-                    settings:
-                      type: object
-                      properties:
-                        notifications:
-                          type: boolean
-                        theme:
-                          type: string
-                          enum: [light, dark]
-                        language:
-                          type: string
-          responses:
-            '200':
-              description: Профиль успешно обновлен
-              content:
-                application/json:
-                  schema:
-                    $ref: '#/components/schemas/UserProfile'
+spec:
+  selector:
+    app: swagger-service
+  ports:
+    - port: 80
+      targetPort: 8080
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: swagger-service
+  namespace: messenger
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: swagger-service
+  template:
+    metadata:
+      labels:
+        app: swagger-service
+    spec:
+      containers:
+        - name: swagger-service
+          image: swaggerapi/swagger-ui:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: BASE_URL
+              value: "/api/docs"
+            - name: SWAGGER_JSON
+              value: "/etc/swagger/swagger.yaml"
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: POSTGRES_DB
+            - name: POSTGRES_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: POSTGRES_HOST
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 30m
+              memory: 64Mi
+          volumeMounts:
+            - name: swagger-config
+              mountPath: /etc/swagger
+          livenessProbe:
+            httpGet:
+              path: /api/docs
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /api/docs
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+      volumes:
+        - name: swagger-config
+          configMap:
+            name: swagger-service-config
 
-      /v1/users/status:
-        put:
-          tags:
-            - Пользователи
-          summary: Обновление статуса пользователя
-          security:
-            - BearerAuth: []
-          requestBody:
-            required: true
-            content:
-              application/json:
-                schema:
-                  type: object
-                  required:
-                    - status
-                  properties:
-                    status:
-                      type: string
-                      enum: [online, offline, away, dnd]
-                      description: Новый статус пользователя
-          responses:
-            '200':
-              description: Статус успешно обновлен
-              content:
-                application/json:
-                  schema:
-                    $ref: '#/components/schemas/UserProfile'
+openapi: 3.0.0
+info:
+  title: Messenger API
+  description: API документация для микросервисов мессенджера
+  version: 1.0.0
+  contact:
+    name: Messenger Team
 
-      # Message Service
-      /v1/messages/dialogs/{userId}:
-        get:
-          tags:
-            - Сообщения
-          summary: Получить сообщения диалога
-          security:
-            - BearerAuth: []
-          parameters:
-            - name: userId
-              in: path
-              required: true
-              schema:
-                type: integer
-                description: ID пользователя, с которым ведется диалог
-            - name: page
-              in: query
-              required: false
-              schema:
-                type: integer
-                default: 1
-            - name: limit
-              in: query
-              required: false
-              schema:
-                type: integer
-                default: 50
-          responses:
-            '200':
-              description: Список сообщений
-              content:
-                application/json:
-                  schema:
-                    type: object
-                    properties:
-                      messages:
-                        type: array
-                        items:
-                          $ref: '#/components/schemas/Message'
-                      pagination:
-                        $ref: '#/components/schemas/Pagination'
-        post:
-          tags:
-            - Сообщения
-          summary: Отправить личное сообщение
-          security:
-            - BearerAuth: []
-          parameters:
-            - name: userId
-              in: path
-              required: true
-              schema:
-                type: integer
-                description: ID получателя сообщения
-          requestBody:
-            required: true
-            content:
-              application/json:
-                schema:
-                  $ref: '#/components/schemas/SendMessageRequest'
-          responses:
-            '201':
-              description: Сообщение отправлено
-              content:
-                application/json:
-                  schema:
-                    $ref: '#/components/schemas/Message'
-      /v1/messages/dialogs:
-        get:
-          tags:
-            - Сообщения
-          summary: Получить список диалогов
-          security:
-            - BearerAuth: []
-          parameters:
-            - name: page
-              in: query
-              required: false
-              schema:
-                type: integer
-                default: 1
-            - name: limit
-              in: query
-              required: false
-              schema:
-                type: integer
-                default: 20
-          responses:
-            '200':
-              description: Список диалогов
-              content:
-                application/json:
-                  schema:
-                    type: object
-                    properties:
-                      dialogs:
-                        type: array
-                        items:
-                          $ref: '#/components/schemas/Dialog'
-                      pagination:
-                        $ref: '#/components/schemas/Pagination'
+servers:
+  - url: http://api.messenger.local
+    description: Локальный сервер разработки
+  - url: https://api.messenger.com
+    description: Продакшн сервер
 
-      /v1/messages/{messageId}/reactions:
-        post:
-          tags:
-            - Сообщения
-          summary: Добавить реакцию на сообщение
-          security:
-            - BearerAuth: []
-          parameters:
-            - name: messageId
-              in: path
-              required: true
-              schema:
-                type: string
-                format: uuid
-          requestBody:
-            required: true
-            content:
-              application/json:
-                schema:
-                  type: object
-                  required:
-                    - emoji
-                  properties:
-                    emoji:
-                      type: string
-                      description: Эмодзи для реакции
-          responses:
-            '201':
-              description: Реакция добавлена
-              content:
-                application/json:
-                  schema:
-                    $ref: '#/components/schemas/Message'
-        delete:
-          tags:
-            - Сообщения
-          summary: Удалить реакцию с сообщения
-          security:
-            - BearerAuth: []
-          parameters:
-            - name: messageId
-              in: path
-              required: true
-              schema:
-                type: string
-                format: uuid
-            - name: emoji
-              in: query
-              required: true
-              schema:
-                type: string
-          responses:
-            '200':
-              description: Реакция удалена
-              content:
-                application/json:
-                  schema:
-                    $ref: '#/components/schemas/Message'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
 
-      # Call Service
-      /v1/calls/user/{userId}:
-        post:
-          tags:
-            - Звонки
-          summary: Позвонить пользователю
-          description: Создает приватную комнату и инициирует прямой звонок конкретному пользователю
-          parameters:
-            - name: userId
-              in: path
-              required: true
-              schema:
-                type: integer
-                description: ID пользователя, которому звоним
-          requestBody:
-            required: true
-            content:
-              application/json:
-                schema:
-                  type: object
-                  required:
-                    - type
-                  properties:
-                    type:
-                      type: string
-                      enum: [audio, video]
-                      description: Тип звонка
-                      example: "audio"
-          responses:
-            '201':
-              description: Звонок успешно инициирован
-              content:
-                application/json:
-                  schema:
-                    type: object
-                    properties:
-                      status:
-                        type: integer
-                        example: 201
-                      data:
-                        type: object
-                        properties:
-                          call:
-                            $ref: '#/components/schemas/Call'
-                          room:
-                            $ref: '#/components/schemas/Room'
-            '400':
-              description: Неверные параметры запроса
-              content:
-                application/json:
-                  schema:
-                    type: object
-                    properties:
-                      status:
-                        type: integer
-                        example: 400
-                      message:
-                        type: string
-                        example: "Неверный тип звонка"
-            '409':
-              description: Пользователь уже в звонке
-              content:
-                application/json:
-                  schema:
-                    type: object
-                    properties:
-                      status:
-                        type: integer
-                        example: 409
-                      message:
-                        type: string
-                        example: "У пользователя уже есть активный звонок"
+  schemas:
+    Error:
+      type: object
+      properties:
+        status:
+          type: integer
+          example: 400
+        message:
+          type: string
+          example: "Ошибка валидации"
 
-      /v1/calls/{callId}/accept:
-        put:
-          tags:
-            - Звонки
-          summary: Принять звонок
-          description: Принимает входящий звонок и подключается к нему
-          parameters:
-            - name: callId
-              in: path
-              required: true
-              schema:
-                type: string
-                format: uuid
-              description: ID звонка
-          responses:
-            '200':
-              description: Звонок успешно принят
-              content:
-                application/json:
-                  schema:
-                    type: object
-                    properties:
-                      status:
-                        type: integer
-                        example: 200
-                      data:
-                        $ref: '#/components/schemas/Call'
-            '404':
-              description: Звонок не найден
-            '409':
-              description: Невозможно принять звонок в текущем статусе
+    # Схемы для звонков
+    Call:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        roomId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, active, ended, rejected]
+        type:
+          type: string
+          enum: [audio, video]
+        initiatorId:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
 
-      /v1/calls/{callId}/reject:
-        post:
-          tags:
-            - Звонки
-          summary: Отклонить звонок
-          description: Отклоняет входящий звонок
-          parameters:
-            - name: callId
-              in: path
-              required: true
-              schema:
-                type: string
-                format: uuid
-              description: ID звонка
-          responses:
-            '200':
-              description: Звонок успешно отклонен
-              content:
-                application/json:
-                  schema:
-                    type: object
-                    properties:
-                      status:
-                        type: integer
-                        example: 200
-                      data:
-                        $ref: '#/components/schemas/Call'
-            '404':
-              description: Звонок не найден
-            '409':
-              description: Невозможно отклонить звонок
+    CallParticipant:
+      type: object
+      properties:
+        userId:
+          type: integer
+        callId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, connected, disconnected]
+        audioEnabled:
+          type: boolean
+        videoEnabled:
+          type: boolean
+        joinedAt:
+          type: string
+          format: date-time
 
-      /v1/calls/{callId}/end:
-        post:
-          tags:
-            - Звонки
-          summary: Завершить звонок
-          description: Завершает текущий звонок
-          parameters:
-            - name: callId
-              in: path
-              required: true
-              schema:
-                type: string
-                format: uuid
-              description: ID звонка
-          responses:
-            '200':
-              description: Звонок успешно завершен
-              content:
-                application/json:
-                  schema:
-                    type: object
-                    properties:
-                      status:
-                        type: integer
-                        example: 200
-                      data:
-                        $ref: '#/components/schemas/Call'
-            '404':
-              description: Звонок не найден
-            '409':
-              description: Звонок уже завершен
+    # Схемы для сообщений
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        content:
+          type: string
+        senderId:
+          type: integer
+        channelId:
+          type: string
+          format: uuid
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attachment'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
 
-      /v1/calls/{callId}/signal:
-        post:
-          tags:
-            - Звонки
-          summary: Отправить WebRTC сигнал
-          description: Отправляет сигнальное сообщение WebRTC другому участнику звонка
-          parameters:
-            - name: callId
-              in: path
-              required: true
-              schema:
-                type: string
-                format: uuid
-              description: ID звонка
-          requestBody:
-            required: true
-            content:
-              application/json:
-                schema:
-                  $ref: '#/components/schemas/SignalingMessage'
-          responses:
-            '200':
-              description: Сигнал успешно отправлен
-              content:
-                application/json:
-                  schema:
-                    type: object
-                    properties:
-                      status:
-                        type: integer
-                        example: 200
-                      data:
-                        type: object
-                        properties:
-                          success:
-                            type: boolean
-                            example: true
-            '404':
-              description: Звонок не найден
-            '400':
-              description: Неверный формат сигнала
+    Attachment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [image, video, file]
+        url:
+          type: string
+        size:
+          type: integer
+        name:
+          type: string
 
-      # Notification Service
-      /v1/notifications:
-        get:
-          tags:
-            - Уведомления
-          summary: Получить список уведомлений
-          security:
-            - BearerAuth: []
-          parameters:
-            - name: page
-              in: query
-              required: false
-              schema:
-                type: integer
-                default: 1
-              description: Номер страницы
-            - name: limit
-              in: query
-              required: false
-              schema:
-                type: integer
-                default: 50
-              description: Количество уведомлений на странице
-          responses:
-            '200':
-              description: Список уведомлений
-              content:
-                application/json:
-                  schema:
-                    type: object
-                    properties:
-                      notifications:
-                        type: array
-                        items:
-                          $ref: '#/components/schemas/Notification'
-                      pagination:
-                        $ref: '#/components/schemas/Pagination'
+    # Схемы для каналов
+    Channel:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          type: string
+          enum: [direct, group]
+        creatorId:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
 
-      /v1/notifications/unread:
-        get:
-          tags:
-            - Уведомления
-          summary: Получить количество непрочитанных уведомлений
-          security:
-            - BearerAuth: []
-          responses:
-            '200':
-              description: Количество непрочитанных уведомлений
-              content:
-                application/json:
-                  schema:
-                    type: object
-                    properties:
-                      count:
-                        type: integer
+    # Схемы для уведомлений
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [message, call, system]
+        userId:
+          type: integer
+        content:
+          type: string
+        read:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
 
-      /v1/notifications/{notificationId}/read:
-        post:
-          tags:
-            - Уведомления
-          summary: Отметить уведомление как прочитанное
-          security:
-            - BearerAuth: []
-          parameters:
-            - name: notificationId
-              in: path
-              required: true
-              schema:
-                type: integer
-              description: ID уведомления
-          responses:
-            '200':
-              description: Уведомление отмечено как прочитанное
-
-      # Server Service
-      /v1/servers:
-        post:
-          tags:
-            - Серверы
-          summary: Создать новый сервер
-          description: Создает новый сервер (группу)
-          security:
-            - BearerAuth: []
-          requestBody:
-            required: true
-            content:
-              application/json:
-                schema:
-                  type: object
-                  required:
-                    - name
-                  properties:
-                    name:
-                      type: string
-                      description: Название сервера
-                      minLength: 3
-                      maxLength: 100
-                    description:
-                      type: string
-                      description: Описание сервера
-                    icon:
-                      type: string
-                      format: uri
-                      description: URL иконки сервера
-          responses:
-            '201':
-              description: Сервер успешно создан
-              content:
-                application/json:
-                  schema:
-                    $ref: '#/components/schemas/Server'
-            '400':
-              description: Ошибка валидации
-        get:
-          tags:
-            - Серверы
-          summary: Получить список серверов пользователя
-          security:
-            - BearerAuth: []
-          responses:
-            '200':
-              description: Список серверов
-              content:
-                application/json:
-                  schema:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Server'
-
-      /v1/servers/{serverId}:
-        get:
-          tags:
-            - Серверы
-          summary: Получить информацию о сервере
-          security:
-            - BearerAuth: []
-          parameters:
-            - name: serverId
-              in: path
-              required: true
-              schema:
-                type: string
-                format: uuid
-          responses:
-            '200':
-              description: Информация о сервере
-              content:
-                application/json:
-                  schema:
-                    $ref: '#/components/schemas/Server'
-            '404':
-              description: Сервер не найден
-
-      /v1/servers/{serverId}/invite:
-        post:
-          tags:
-            - Серверы
-          summary: Создать приглашение на сервер
-          security:
-            - BearerAuth: []
-          parameters:
-            - name: serverId
-              in: path
-              required: true
-              schema:
-                type: string
-                format: uuid
-          responses:
-            '201':
-              description: Приглашение создано
-              content:
-                application/json:
-                  schema:
-                    type: object
-                    properties:
-                      code:
-                        type: string
-                        description: Код приглашения
-                      expiresAt:
-                        type: string
-                        format: date-time
-                        description: Время истечения приглашения
-
-      /v1/servers/join/{inviteCode}:
-        post:
-          tags:
-            - Серверы
-          summary: Присоединиться к серверу по коду приглашения
-          security:
-            - BearerAuth: []
-          parameters:
-            - name: inviteCode
-              in: path
-              required: true
-              schema:
-                type: string
-          responses:
-            '200':
-              description: Успешное присоединение к серверу
-              content:
-                application/json:
-                  schema:
-                    $ref: '#/components/schemas/Server'
-            '404':
-              description: Приглашение не найдено или истекло
-            '409':
-              description: Пользователь уже состоит в сервере
-
-      # Channel Service
-      /v1/servers/{serverId}/channels:
-        post:
-          tags:
-            - Каналы
-          summary: Создать новый канал
-          security:
-            - BearerAuth: []
-          parameters:
-            - name: serverId
-              in: path
-              required: true
-              schema:
-                type: string
-                format: uuid
-          requestBody:
-            required: true
-            content:
-              application/json:
-                schema:
-                  type: object
-                  required:
-                    - name
-                    - type
-                  properties:
-                    name:
-                      type: string
-                      description: Название канала
-                      minLength: 1
-                      maxLength: 100
-                    type:
-                      type: string
-                      enum: [text, voice]
-                      description: Тип канала
-                    description:
-                      type: string
-                      description: Описание канала
-                    isPrivate:
-                      type: boolean
-                      description: Является ли канал приватным
-          responses:
-            '201':
-              description: Канал успешно создан
-              content:
-                application/json:
-                  schema:
-                    $ref: '#/components/schemas/Channel'
-            '404':
-              description: Сервер не найден
-        get:
-          tags:
-            - Каналы
-          summary: Получить список каналов сервера
-          security:
-            - BearerAuth: []
-          parameters:
-            - name: serverId
-              in: path
-              required: true
-              schema:
-                type: string
-                format: uuid
-          responses:
-            '200':
-              description: Список каналов
-              content:
-                application/json:
-                  schema:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Channel'
-            '404':
-              description: Сервер не найден
-
-      /v1/servers/{serverId}/channels/{channelId}:
-        get:
-          tags:
-            - Каналы
-          summary: Получить информацию о канале
-          security:
-            - BearerAuth: []
-          parameters:
-            - name: serverId
-              in: path
-              required: true
-              schema:
-                type: string
-                format: uuid
-            - name: channelId
-              in: path
-              required: true
-              schema:
-                type: string
-                format: uuid
-          responses:
-            '200':
-              description: Информация о канале
-              content:
-                application/json:
-                  schema:
-                    $ref: '#/components/schemas/Channel'
-            '404':
-              description: Канал не найден
-
-      /v1/servers/{serverId}/channels/{channelId}/messages:
-        get:
-          tags:
-            - Каналы
-          summary: Получить сообщения канала
-          security:
-            - BearerAuth: []
-          parameters:
-            - name: serverId
-              in: path
-              required: true
-              schema:
-                type: string
-                format: uuid
-            - name: channelId
-              in: path
-              required: true
-              schema:
-                type: string
-                format: uuid
-            - name: page
-              in: query
-              required: false
-              schema:
-                type: integer
-                default: 1
-            - name: limit
-              in: query
-              required: false
-              schema:
-                type: integer
-                default: 50
-          responses:
-            '200':
-              description: Список сообщений канала
-              content:
-                application/json:
-                  schema:
-                    type: object
-                    properties:
-                      messages:
-                        type: array
-                        items:
-                          $ref: '#/components/schemas/Message'
-                      pagination:
-                        $ref: '#/components/schemas/Pagination'
-        post:
-          tags:
-            - Каналы
-          summary: Отправить сообщение в канал
-          security:
-            - BearerAuth: []
-          parameters:
-            - name: serverId
-              in: path
-              required: true
-              schema:
-                type: string
-                format: uuid
-            - name: channelId
-              in: path
-              required: true
-              schema:
-                type: string
-                format: uuid
-          requestBody:
-            required: true
-            content:
-              application/json:
-                schema:
-                  $ref: '#/components/schemas/SendMessageRequest'
-          responses:
-            '201':
-              description: Сообщение отправлено
-              content:
-                application/json:
-                  schema:
-                    $ref: '#/components/schemas/Message'
-
-      /v1/servers/{serverId}/roles:
-        post:
-          tags:
-            - Серверы
-          summary: Создать новую роль
-          security:
-            - BearerAuth: []
-          parameters:
-            - name: serverId
-              in: path
-              required: true
-              schema:
-                type: string
-                format: uuid
-          requestBody:
-            required: true
-            content:
-              application/json:
-                schema:
-                  type: object
-                  required:
-                    - name
-                  properties:
-                    name:
-                      type: string
-                      description: Название роли
-                    color:
-                      type: string
-                      description: Цвет роли в HEX формате
-                    permissions:
-                      type: array
-                      items:
-                        type: string
-                        enum:
-                          - manage_server
-                          - manage_channels
-                          - manage_roles
-                          - manage_messages
-                          - send_messages
-                          - read_messages
-                          - connect
-                          - speak
-                          - stream
-                          - mention_everyone
-                          - create_invites
-          responses:
-            '201':
-              description: Роль создана
-              content:
-                application/json:
-                  schema:
-                    $ref: '#/components/schemas/Role'
-
-      /v1/servers/{serverId}/members/{userId}/roles:
-        post:
-          tags:
-            - Серверы
-          summary: Назначить роль участнику
-          security:
-            - BearerAuth: []
-          parameters:
-            - name: serverId
-              in: path
-              required: true
-              schema:
-                type: string
-                format: uuid
-            - name: userId
-              in: path
-              required: true
-              schema:
-                type: integer
-                description: ID пользователя
-          requestBody:
-            required: true
-            content:
-              application/json:
-                schema:
-                  type: object
-                  required:
-                    - roleId
-                  properties:
-                    roleId:
-                      type: string
-                      format: uuid
-                      description: ID роли
-          responses:
-            '200':
-              description: Роль назначена
-              content:
-                application/json:
-                  schema:
-                    $ref: '#/components/schemas/ServerMember'
-
-      /v1/servers/{serverId}/channels/{channelId}/permissions:
-        put:
-          tags:
-            - Каналы
-          summary: Обновить права доступа к каналу
-          security:
-            - BearerAuth: []
-          parameters:
-            - name: serverId
-              in: path
-              required: true
-              schema:
-                type: string
-                format: uuid
-            - name: channelId
-              in: path
-              required: true
-              schema:
-                type: string
-                format: uuid
-          requestBody:
-            required: true
-            content:
-              application/json:
-                schema:
-                  type: object
-                  required:
-                    - roleId
-                    - permissions
-                  properties:
-                    roleId:
-                      type: string
-                      format: uuid
-                      description: ID роли
-                    permissions:
-                      type: array
-                      items:
-                        type: string
-                        enum: [view, send_messages, manage, connect, speak]
-          responses:
-            '200':
-              description: Права доступа обновлены
-              content:
-                application/json:
-                  schema:
-                    $ref: '#/components/schemas/Channel'
-
-    components:
-      securitySchemes:
-        BearerAuth:
-          type: http
-          scheme: bearer
-          bearerFormat: JWT
-      schemas:
-        AuthResponse:
-          type: object
-          properties:
-            token:
-              type: string
-            user:
-              $ref: '#/components/schemas/UserProfile'
-        UserProfile:
-          type: object
-          properties:
-            id:
-              type: integer
-              description: ID пользователя
-            username:
-              type: string
-            email:
-              type: string
-            avatar:
-              type: string
-            status:
-              type: string
-              enum: [online, offline]
-            settings:
+paths:
+  # Звонки
+  /api/v1/calls/user/{userId}:
+    post:
+      tags:
+        - Звонки
+      summary: Начать звонок с пользователем
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
               type: object
               properties:
-                notifications:
-                  type: boolean
-                theme:
+                type:
                   type: string
-                  enum: [light, dark]
-                language:
+                  enum: [audio, video]
+      responses:
+        '201':
+          description: Звонок создан
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                  data:
+                    $ref: '#/components/schemas/Call'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/calls/{callId}/accept:
+    put:
+      tags:
+        - Звонки
+      summary: Принять звонок
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: callId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Звонок принят
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Call'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Сообщения
+  /api/v1/messages:
+    post:
+      tags:
+        - Сообщения
+      summary: Отправить сообщение
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content:
                   type: string
-        Message:
-          type: object
-          properties:
-            id:
-              type: string
-              format: uuid
-              description: ID сообщения
-            content:
-              type: string
-            senderId:
-              type: integer
-              description: ID отправителя
-            attachments:
-              type: array
-              items:
-                type: string
-            replyToId:
-              type: string
-              format: uuid
-              description: ID сообщения, на которое отвечают
-              nullable: true
-            reactions:
-              type: array
-              items:
-                $ref: '#/components/schemas/Reaction'
-            createdAt:
-              type: string
-              format: date-time
-            updatedAt:
-              type: string
-              format: date-time
-        SendMessageRequest:
-          type: object
-          required:
-            - content
-          properties:
-            content:
-              type: string
-            attachments:
-              type: array
-              items:
-                type: string
-            replyToId:
-              type: string
-              format: uuid
-              nullable: true
-        Reaction:
-          type: object
-          properties:
-            userId:
-              type: integer
-              description: ID пользователя
-            emoji:
-              type: string
-            createdAt:
-              type: string
-              format: date-time
-        Call:
-          type: object
-          properties:
-            id:
-              type: string
-              format: uuid
-              description: ID звонка
-            room_id:
-              type: string
-              format: uuid
-              description: ID комнаты
-            initiator_id:
-              type: integer
-              description: ID инициатора звонка
-            type:
-              type: string
-              enum: [audio, video]
-              description: Тип звонка
-            status:
-              type: string
-              enum: [initiated, connected, ended, rejected]
-              description: Статус звонка
-            start_time:
-              type: string
-              format: date-time
-              description: Время начала звонка
-              nullable: true
-            end_time:
-              type: string
-              format: date-time
-              description: Время завершения звонка
-              nullable: true
-            duration:
-              type: integer
-              description: Длительность звонка в секундах
-              nullable: true
-            created_at:
-              type: string
-              format: date-time
-            updated_at:
-              type: string
-              format: date-time
-        Room:
-          type: object
-          properties:
-            id:
-              type: string
-              format: uuid
-              description: ID комнаты
-            name:
-              type: string
-              description: Название комнаты
-            created_by:
-              type: integer
-              description: ID создателя комнаты
-            invite_code:
-              type: string
-              description: Код приглашения в комнату
-            is_active:
-              type: boolean
-              description: Активна ли комната
-            created_at:
-              type: string
-              format: date-time
-            updated_at:
-              type: string
-              format: date-time
-        SignalingMessage:
-          type: object
-          required:
-            - type
-            - payload
-            - to
-          properties:
-            type:
-              type: string
-              enum: [offer, answer, ice-candidate]
-              description: Тип сигнала WebRTC
-            payload:
+                channelId:
+                  type: string
+                  format: uuid
+                attachments:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Attachment'
+      responses:
+        '201':
+          description: Сообщение отправлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+
+  /api/v1/messages/{messageId}:
+    get:
+      tags:
+        - Сообщения
+      summary: Получить сообщение по ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Сообщение найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+
+  # Каналы
+  /api/v1/channels:
+    post:
+      tags:
+        - Каналы
+      summary: Создать новый канал
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
               type: object
-              description: Данные сигнала
-            from:
-              type: integer
-              description: ID отправителя сигнала
-            to:
-              type: integer
-              description: ID получателя сигнала
-            roomId:
-              type: string
-              format: uuid
-              description: ID комнаты звонка
-        Notification:
-          type: object
-          properties:
-            id:
-              type: string
-              format: uuid
-              description: ID уведомления
-            type:
-              type: string
-              enum: [message, call, friend_request]
-            content:
-              type: string
-            data:
-              type: object
-            isRead:
-              type: boolean
-            createdAt:
-              type: string
-              format: date-time
-        Pagination:
-          type: object
-          properties:
-            page:
-              type: integer
-            limit:
-              type: integer
-            total:
-              type: integer
-            hasMore:
-              type: boolean
-        Server:
-          type: object
-          properties:
-            id:
-              type: string
-              format: uuid
-              description: ID сервера
-            name:
-              type: string
-              description: Название сервера
-            description:
-              type: string
-              description: Описание сервера
-            icon:
-              type: string
-              format: uri
-              description: URL иконки сервера
-            ownerId:
-              type: integer
-              description: ID владельца сервера
-            channels:
-              type: array
-              items:
+              properties:
+                name:
+                  type: string
+                type:
+                  type: string
+                  enum: [direct, group]
+      responses:
+        '201':
+          description: Канал создан
+          content:
+            application/json:
+              schema:
                 $ref: '#/components/schemas/Channel'
-            members:
-              type: array
-              items:
-                $ref: '#/components/schemas/ServerMember'
-            roles:
-              type: array
-              items:
-                $ref: '#/components/schemas/Role'
-            createdAt:
-              type: string
-              format: date-time
-            updatedAt:
-              type: string
-              format: date-time
 
-        Channel:
-          type: object
-          properties:
-            id:
-              type: string
-              format: uuid
-              description: ID канала
-            serverId:
-              type: string
-              format: uuid
-              description: ID сервера
-            name:
-              type: string
-              description: Название канала
-            type:
-              type: string
-              enum: [text, voice]
-              description: Тип канала
-            description:
-              type: string
-              description: Описание канала
-            isPrivate:
-              type: boolean
-              description: Является ли канал приватным
-            permissions:
-              type: array
-              items:
-                type: string
-                enum: [view, send_messages, manage, connect, speak]
-              description: Права доступа к каналу
-            position:
-              type: integer
-              description: Позиция канала в списке
-            createdAt:
-              type: string
-              format: date-time
-            updatedAt:
-              type: string
-              format: date-time
+  # Уведомления
+  /api/v1/notifications:
+    get:
+      tags:
+        - Уведомления
+      summary: Получить список уведомлений
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Список уведомлений
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Notification'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  pages:
+                    type: integer
 
-        ServerMember:
-          type: object
-          properties:
-            id:
-              type: string
-              format: uuid
-              description: ID участника
-            userId:
-              type: integer
-              description: ID пользователя
-            serverId:
-              type: string
-              format: uuid
-              description: ID сервера
-            nickname:
-              type: string
-              description: Никнейм пользователя на сервере
-            roles:
-              type: array
-              items:
-                $ref: '#/components/schemas/Role'
-            joinedAt:
-              type: string
-              format: date-time
-            updatedAt:
-              type: string
-              format: date-time
+components:
+  responses:
+    BadRequest:
+      description: Неверный запрос
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Требуется авторизация
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
 
-        Role:
-          type: object
-          properties:
-            id:
-              type: string
-              format: uuid
-              description: ID роли
-            name:
-              type: string
-              description: Название роли
-            color:
-              type: string
-              description: Цвет роли в формате HEX
-            permissions:
-              type: array
-              items:
-                type: string
-                enum:
-                  - manage_server
-                  - manage_channels
-                  - manage_roles
-                  - manage_messages
-                  - send_messages
-                  - read_messages
-                  - connect
-                  - speak
-                  - stream
-                  - mention_everyone
-                  - create_invites
-              description: Права роли
-            position:
-              type: integer
-              description: Позиция роли в иерархии
-            isDefault:
-              type: boolean
-              description: Является ли роль стандартной
-            createdAt:
-              type: string
-              format: date-time
-            updatedAt:
-              type: string
-              format: date-time
-        Dialog:
-          type: object
-          properties:
-            id:
-              type: string
-              format: uuid
-              description: ID диалога
-            participants:
-              type: array
-              items:
-                $ref: '#/components/schemas/UserProfile'
-            lastMessage:
-              $ref: '#/components/schemas/Message'
-            unreadCount:
-              type: integer
-              description: Количество непрочитанных сообщений
-            updatedAt:
-              type: string
-              format: date-time
-            createdAt:
-              type: string
-              format: date-time
+tags:
+  - name: Звонки
+    description: Операции со звонками
+  - name: Сообщения
+    description: Операции с сообщениями
+  - name: Каналы
+    description: Операции с каналами
+  - name: Уведомления
+    description: Операции с уведомлениями 

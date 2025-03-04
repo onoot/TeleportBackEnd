@@ -1,31 +1,32 @@
-import axios from 'axios';
-import { config } from '../config';
+import { RedisService } from './RedisService';
 
-class CallService {
-  private baseUrl: string;
-
-  constructor() {
-    this.baseUrl = config.callService.url;
-  }
-
-  async createRoom() {
-    try {
-      const response = await axios.post(`${this.baseUrl}/rooms`);
-      return response.data;
-    } catch (error) {
-      console.error('Error creating room:', error);
-      throw new Error('Failed to create room');
-    }
-  }
-
-  async deleteRoom(roomId: string) {
-    try {
-      await axios.delete(`${this.baseUrl}/rooms/${roomId}`);
-    } catch (error) {
-      console.error('Error deleting room:', error);
-      throw new Error('Failed to delete room');
-    }
-  }
+interface ICallParticipant {
+  userId: string;
+  socketId: string;
+  peerId: string;
 }
 
-export const callService = new CallService(); 
+export class CallService {
+  constructor(private readonly redisService: RedisService) {}
+
+  private getCallKey(roomId: string): string {
+    return `call:${roomId}:participants`;
+  }
+
+  async addCallParticipant(roomId: string, participant: ICallParticipant): Promise<void> {
+    const key = this.getCallKey(roomId);
+    await this.redisService.hSet(key, participant.userId, JSON.stringify(participant));
+  }
+
+  async removeCallParticipant(roomId: string, userId: string): Promise<void> {
+    const key = this.getCallKey(roomId);
+    await this.redisService.hDel(key, userId);
+  }
+
+  async getRoomParticipants(roomId: string): Promise<ICallParticipant[]> {
+    const key = this.getCallKey(roomId);
+    const participants = await this.redisService.hGetAll(key);
+    
+    return Object.values(participants).map(p => JSON.parse(p));
+  }
+} 

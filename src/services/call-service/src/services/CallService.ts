@@ -6,9 +6,11 @@ import { WebSocketService } from './WebSocketService';
 import { AppDataSource } from '../data-source';
 import { RoomService } from './RoomService';
 import { CallModel } from '../models/CallModel';
-import { Injectable } from '@nestjs/common';
 import { RedisService } from './RedisService';
 import { KafkaService } from './KafkaService';
+import { Router } from 'express';
+import { Socket } from 'socket.io';
+import { IRedisService } from '../interfaces/RedisService';
 
 interface CallRoom {
   id: string;
@@ -21,18 +23,20 @@ interface CallRoom {
   }>;
 }
 
-@Injectable()
 export class CallService {
   private callRepository = AppDataSource.getRepository(Call);
   private participantRepository = AppDataSource.getRepository(CallParticipant);
   private readonly callModel: CallModel;
   private webSocketService?: WebSocketService;
+  public router: Router;
 
   constructor(
-    private redisService: RedisService,
-    private kafkaService: KafkaService
+    private readonly redisService: IRedisService,
+    private readonly kafkaService: KafkaService
   ) {
     this.callModel = new CallModel(AppDataSource);
+    this.router = Router();
+    this.initializeRoutes();
   }
 
   public setWebSocketService(webSocketService: WebSocketService): void {
@@ -86,7 +90,9 @@ export class CallService {
   }
 
   async getParticipant(callId: string, userId: number): Promise<CallParticipant | null> {
-    return this.callModel.getCallParticipant(callId, userId);
+    return this.participantRepository.findOne({
+      where: { call_id: callId, user_id: userId }
+    });
   }
 
   async updateParticipantStatus(participant: CallParticipant, status: ParticipantStatus): Promise<CallParticipant> {
@@ -97,6 +103,16 @@ export class CallService {
       participant.left_at = new Date();
     }
     return this.callModel.updateCallParticipant(participant);
+  }
+
+  async updateParticipantAudioState(participant: CallParticipant, enabled: boolean): Promise<CallParticipant> {
+    participant.audio_enabled = enabled;
+    return this.participantRepository.save(participant);
+  }
+
+  async updateParticipantVideoState(participant: CallParticipant, enabled: boolean): Promise<CallParticipant> {
+    participant.video_enabled = enabled;
+    return this.participantRepository.save(participant);
   }
 
   async updateCallStatus(call: Call, status: CallStatus): Promise<Call> {
@@ -113,7 +129,12 @@ export class CallService {
   }
 
   async getActiveParticipants(callId: string): Promise<CallParticipant[]> {
-    return this.callModel.getActiveCallParticipants(callId);
+    return this.participantRepository.find({
+      where: {
+        call_id: callId,
+        status: ParticipantStatus.CONNECTED
+      }
+    });
   }
 
   async endCall(callId: string): Promise<void> {
@@ -397,11 +418,9 @@ export class CallService {
       throw new Error('Room not found');
     }
 
-    // Добавляем участника в Redis
     await this.redisService.addCallParticipant(roomId, userId);
 
-    // Отправляем событие в Kafka
-    await this.kafkaService.emit('calls', {
+    await this.kafkaService.produce('call-events', {
       type: 'participant_joined',
       roomId,
       userId,
@@ -417,8 +436,7 @@ export class CallService {
     call.endedAt = new Date();
     await this.callRepository.save(call);
 
-    // Отправляем событие в Kafka
-    await this.kafkaService.emit('calls', {
+    await this.kafkaService.produce('call-events', {
       type: 'call_ended',
       callId,
       timestamp: new Date().toISOString()
@@ -426,26 +444,116 @@ export class CallService {
   }
 
   async endCallByRoomId(roomId: string): Promise<void> {
-    // Удаляем комнату из Redis
     await this.redisService.del(`call:room:${roomId}`);
     
-    // Отправляем событие в Kafka
-    await this.kafkaService.emit('calls', {
+    await this.kafkaService.produce('call-events', {
       type: 'call_ended',
       roomId,
       timestamp: new Date().toISOString()
     });
+  }
 
-    // Обновляем статус в базе данных
-    const call = await this.callRepository
-      .createQueryBuilder('call')
-      .where('call.roomId = :roomId', { roomId })
-      .getOne();
+  private initializeRoutes() {
+    this.router.post('/join', this.handleJoinCall.bind(this));
+    this.router.post('/leave', this.handleLeaveCall.bind(this));
+    this.router.get('/:callId/participants', this.getParticipants.bind(this));
+  }
 
-    if (call) {
-      call.status = CallStatus.ENDED;
-      call.endedAt = new Date();
-      await this.callRepository.save(call);
+  public handleConnection(socket: Socket) {
+    console.log('Client connected:', socket.id);
+
+    socket.on('join-call', async (data) => {
+      const { callId, userId } = data;
+      await this.redisService.sadd(`call:${callId}:participants`, userId);
+      socket.join(`call:${callId}`);
+      socket.to(`call:${callId}`).emit('user-joined', { userId });
+      
+      await this.kafkaService.produce('call-events', {
+        type: 'USER_JOINED_CALL',
+        data: { callId, userId }
+      });
+    });
+
+    socket.on('leave-call', async (data) => {
+      const { callId, userId } = data;
+      await this.redisService.srem(`call:${callId}:participants`, userId);
+      socket.leave(`call:${callId}`);
+      socket.to(`call:${callId}`).emit('user-left', { userId });
+      
+      await this.kafkaService.produce('call-events', {
+        type: 'USER_LEFT_CALL',
+        data: { callId, userId }
+      });
+    });
+
+    socket.on('disconnect', () => {
+      console.log('Client disconnected:', socket.id);
+    });
+  }
+
+  private async handleJoinCall(req: any, res: any) {
+    try {
+      const { callId, userId } = req.body;
+      await this.redisService.sadd(`call:${callId}:participants`, userId);
+      
+      await this.kafkaService.produce('call-events', {
+        type: 'USER_JOINED_CALL',
+        data: { callId, userId }
+      });
+
+      res.status(200).json({ success: true });
+    } catch (error) {
+      console.error('Error joining call:', error);
+      res.status(500).json({ error: 'Failed to join call' });
     }
+  }
+
+  private async handleLeaveCall(req: any, res: any) {
+    try {
+      const { callId, userId } = req.body;
+      await this.redisService.srem(`call:${callId}:participants`, userId);
+      
+      await this.kafkaService.produce('call-events', {
+        type: 'USER_LEFT_CALL',
+        data: { callId, userId }
+      });
+
+      res.status(200).json({ success: true });
+    } catch (error) {
+      console.error('Error leaving call:', error);
+      res.status(500).json({ error: 'Failed to leave call' });
+    }
+  }
+
+  private async getParticipants(req: any, res: any) {
+    try {
+      const { callId } = req.params;
+      const participants = await this.redisService.smembers(`call:${callId}:participants`);
+      res.status(200).json({ participants });
+    } catch (error) {
+      console.error('Error getting participants:', error);
+      res.status(500).json({ error: 'Failed to get participants' });
+    }
+  }
+
+  async generateInvite(callId: string, userId: number): Promise<{ invite_code: string }> {
+    const call = await this.getCallById(callId);
+    if (!call) {
+      throw new Error('Call not found');
+    }
+
+    // Проверяем, является ли пользователь участником звонка
+    const participant = await this.findParticipant(callId, userId);
+    if (!participant) {
+      throw new Error('User is not a participant of this call');
+    }
+
+    // Генерируем уникальный код приглашения
+    const inviteCode = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    
+    // Сохраняем код приглашения в Redis с временем жизни 24 часа
+    await this.redisService.set(`invite:${inviteCode}`, callId, 86400);
+
+    return { invite_code: inviteCode };
   }
 } 

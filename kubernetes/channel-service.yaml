@@ -1,4 +1,4 @@
-apiVersion: apps/v1
+﻿apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: channel-service
@@ -26,8 +26,33 @@ spec:
     spec:
       containers:
       - name: channel-service
-        image: gcr.io/teleport-450320/channel-service:latest
-        imagePullPolicy: Always
+        image: local/channel-service:latest
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
         ports:
         - containerPort: 3000
           name: http
@@ -41,42 +66,88 @@ spec:
         - name: WS_PORT
           value: "3001"
         # База данных
-        - name: POSTGRES_HOST
+        - name: DB_HOST
           valueFrom:
             secretKeyRef:
-              name: postgres-secret
-              key: host
-        - name: POSTGRES_PORT
+              name: postgres-secrets
+              key: POSTGRES_HOST
+        - name: DB_PORT
           valueFrom:
             secretKeyRef:
-              name: postgres-secret
-              key: port
-        - name: POSTGRES_DB
+              name: postgres-secrets
+              key: POSTGRES_PORT
+        - name: DB_USERNAME
           valueFrom:
             secretKeyRef:
-              name: postgres-secret
-              key: database
-        - name: POSTGRES_USER
+              name: postgres-secrets
+              key: POSTGRES_USER
+        - name: DB_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: postgres-secret
-              key: user
-        - name: POSTGRES_PASSWORD
+              name: postgres-secrets
+              key: POSTGRES_PASSWORD
+        - name: DB_DATABASE
           valueFrom:
             secretKeyRef:
-              name: postgres-secret
-              key: password
+              name: postgres-secrets
+              key: POSTGRES_DB
         # JWT
         - name: JWT_SECRET
           valueFrom:
             secretKeyRef:
-              name: jwt-secret
-              key: secret
+              name: app-secrets
+              key: JWT_SECRET
         - name: JWT_EXPIRES_IN
           value: "24h"
         # CORS
         - name: CORS_ORIGIN
           value: "*"
+        # R2 Storage
+        - name: R2_ACCOUNT_ID
+          valueFrom:
+            secretKeyRef:
+              name: r2-secret
+              key: account_id
+        - name: R2_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: r2-secret
+              key: access_key_id
+        - name: R2_ACCESS_KEY_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: r2-secret
+              key: access_key_secret
+        - name: R2_BUCKET_NAME
+          valueFrom:
+            secretKeyRef:
+              name: r2-secret
+              key: bucket_name
+        - name: R2_PUBLIC_URL
+          valueFrom:
+            secretKeyRef:
+              name: r2-secret
+              key: public_url
+        # Kafka
+        - name: KAFKA_BROKERS
+          valueFrom:
+            secretKeyRef:
+              name: kafka-secrets
+              key: KAFKA_BROKERS
+        - name: KAFKA_SSL
+          value: "false"
+        - name: KAFKA_SASL_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: kafka-secrets
+              key: KAFKA_SASL_USERNAME
+        - name: KAFKA_SASL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kafka-secrets
+              key: KAFKA_SASL_PASSWORD
+        - name: KAFKA_SASL_MECHANISM
+          value: "plain"
         resources:
           requests:
             cpu: 50m
@@ -111,8 +182,6 @@ spec:
           timeoutSeconds: 2
           successThreshold: 1
           failureThreshold: 30
-      imagePullSecrets:
-      - name: gcr-json-key
 ---
 apiVersion: v1
 kind: Service
@@ -201,3 +270,33 @@ spec:
       - type: Pods
         value: 1
         periodSeconds: 60 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

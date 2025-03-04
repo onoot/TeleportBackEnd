@@ -1,35 +1,74 @@
-import { getRepository } from 'typeorm';
-import { Role, Permission, DefaultRole } from '../entities/Role';
+import { Repository } from 'typeorm';
+import { Role } from '../entities/Role';
 import { Server } from '../entities/Server';
 import { ServerMember } from '../entities/ServerMember';
-import { config } from '../config';
+import { Permission, DefaultRole } from '../types/role';
+import { AppDataSource } from '../data-source';
 
 export class RoleService {
-  private static roleRepository = getRepository(Role);
-  private static serverRepository = getRepository(Server);
-  private static memberRepository = getRepository(ServerMember);
+  private static instance: RoleService | null = null;
+  private roleRepository!: Repository<Role>;
+  private serverRepository!: Repository<Server>;
+  private memberRepository!: Repository<ServerMember>;
+  private initialized = false;
 
-  // Создание дефолтных ролей при создании сервера
-  static async createDefaultRoles(serverId: number): Promise<Role[]> {
+  private constructor() {}
+
+  public static async getInstance(): Promise<RoleService> {
+    if (!RoleService.instance) {
+      const service = new RoleService();
+      await service.initialize();
+      RoleService.instance = service;
+    }
+    return RoleService.instance;
+  }
+
+  private async initialize() {
+    if (this.initialized) return;
+
+    try {
+      // Ждем инициализации AppDataSource если необходимо
+      if (!AppDataSource.isInitialized) {
+        await AppDataSource.initialize();
+      }
+
+      this.roleRepository = AppDataSource.getRepository(Role);
+      this.serverRepository = AppDataSource.getRepository(Server);
+      this.memberRepository = AppDataSource.getRepository(ServerMember);
+      this.initialized = true;
+      console.log('RoleService initialized successfully');
+    } catch (error) {
+      console.error('Failed to initialize RoleService:', error);
+      throw error;
+    }
+  }
+
+  // Создание дефолтных ролей для сервера
+  async createDefaultRoles(serverId: number): Promise<Role[]> {
     const roles: Role[] = [];
 
     // Создаем роль владельца
     const ownerRole = new Role();
-    ownerRole.name = config.defaultRoles.owner.name;
-    ownerRole.permissions = config.defaultRoles.owner.permissions as Permission[];
-    ownerRole.position = config.defaultRoles.owner.position;
-    ownerRole.is_deletable = config.defaultRoles.owner.is_deletable;
+    ownerRole.name = 'Owner';
+    ownerRole.permissions = Object.values(Permission);
+    ownerRole.position = 0;
     ownerRole.server_id = serverId;
+    ownerRole.is_deletable = false;
     ownerRole.default_role = DefaultRole.OWNER;
     roles.push(await this.roleRepository.save(ownerRole));
 
     // Создаем роль участника
     const memberRole = new Role();
-    memberRole.name = config.defaultRoles.member.name;
-    memberRole.permissions = config.defaultRoles.member.permissions as Permission[];
-    memberRole.position = config.defaultRoles.member.position;
-    memberRole.is_deletable = config.defaultRoles.member.is_deletable;
+    memberRole.name = 'Member';
+    const memberPermissions = [
+      Permission.VIEW_CHANNELS,
+      Permission.SEND_MESSAGES,
+      Permission.CREATE_INVITE
+    ];
+    memberRole.permissions = memberPermissions;
+    memberRole.position = 1;
     memberRole.server_id = serverId;
+    memberRole.is_deletable = false;
     memberRole.default_role = DefaultRole.MEMBER;
     roles.push(await this.roleRepository.save(memberRole));
 
@@ -37,7 +76,7 @@ export class RoleService {
   }
 
   // Проверка наличия разрешения у пользователя
-  static async hasPermission(userId: number, serverId: number, permission: Permission): Promise<boolean> {
+  async hasPermission(userId: number, serverId: number, permission: Permission): Promise<boolean> {
     const member = await this.memberRepository.findOne({
       where: { user_id: userId, server_id: serverId },
       relations: ['roles']
@@ -50,8 +89,8 @@ export class RoleService {
     return member.roles.some(role => role.permissions.includes(permission));
   }
 
-  // Получение роли по умолчанию
-  static async getDefaultRole(serverId: number, defaultRole: DefaultRole): Promise<Role | undefined> {
+  // Получение дефолтной роли сервера
+  async getDefaultRole(serverId: number, defaultRole: DefaultRole): Promise<Role | undefined> {
     const role = await this.roleRepository.findOne({
       where: {
         server_id: serverId,
@@ -62,7 +101,7 @@ export class RoleService {
   }
 
   // Назначение роли участнику
-  static async assignRoleToMember(memberId: number, roleId: number): Promise<void> {
+  async assignRoleToMember(memberId: number, roleId: number): Promise<void> {
     const member = await this.memberRepository.findOne({
       where: { id: memberId },
       relations: ['roles']
@@ -81,7 +120,7 @@ export class RoleService {
   }
 
   // Удаление роли у участника
-  static async removeRoleFromMember(memberId: number, roleId: number): Promise<void> {
+  async removeRoleFromMember(memberId: number, roleId: number): Promise<void> {
     const member = await this.memberRepository.findOne({
       where: { id: memberId },
       relations: ['roles']
@@ -96,7 +135,7 @@ export class RoleService {
   }
 
   // Получение всех ролей сервера
-  static async getServerRoles(serverId: number): Promise<Role[]> {
+  async getServerRoles(serverId: number): Promise<Role[]> {
     return this.roleRepository.find({
       where: { server_id: serverId },
       order: { position: 'DESC' }
@@ -104,7 +143,7 @@ export class RoleService {
   }
 
   // Создание новой роли
-  static async createRole(
+  async createRole(
     serverId: number,
     name: string,
     permissions: Permission[],
@@ -121,7 +160,7 @@ export class RoleService {
   }
 
   // Обновление роли
-  static async updateRole(
+  async updateRole(
     roleId: number,
     name?: string,
     permissions?: Permission[],
@@ -147,7 +186,7 @@ export class RoleService {
   }
 
   // Удаление роли
-  static async deleteRole(roleId: number): Promise<void> {
+  async deleteRole(roleId: number): Promise<void> {
     const role = await this.roleRepository.findOne({
       where: { id: roleId }
     });

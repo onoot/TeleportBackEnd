@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany } from 'typeorm';
 import { Server } from './Server';
 import { Channel } from './Channel';
 
@@ -21,10 +21,4 @@ export class Category {
 
   @OneToMany(() => Channel, channel => channel.category)
   channels!: Channel[];
-
-  @CreateDateColumn({ type: 'timestamp with time zone' })
-  created_at!: Date;
-
-  @UpdateDateColumn({ type: 'timestamp with time zone' })
-  updated_at!: Date;
 } 

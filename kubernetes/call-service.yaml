@@ -26,8 +26,8 @@ spec:
     spec:
       containers:
       - name: call-service
-        image: gcr.io/teleport-450320/call-service:latest
-        imagePullPolicy: Always
+        image: local/call-service:latest
+        imagePullPolicy: Never
         ports:
         - name: http
           containerPort: 3003
@@ -119,28 +119,20 @@ spec:
         - name: KAFKA_BROKERS
           valueFrom:
             secretKeyRef:
-              name: kafka-secret
-              key: brokers
+              name: kafka-secrets
+              key: KAFKA_BROKERS
         - name: KAFKA_SSL
+          value: "false"
+        - name: KAFKA_SASL_USERNAME
           valueFrom:
             secretKeyRef:
-              name: kafka-secret
-              key: ssl
-        - name: KAFKA_USERNAME
+              name: kafka-secrets
+              key: KAFKA_SASL_USERNAME
+        - name: KAFKA_SASL_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: kafka-secret
-              key: username
-        - name: KAFKA_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: kafka-secret
-              key: password
-        - name: KAFKA_SASL_MECHANISM
-          valueFrom:
-            secretKeyRef:
-              name: kafka-secret
-              key: mechanism
+              name: kafka-secrets
+              key: KAFKA_SASL_PASSWORD
       imagePullSecrets:
       - name: gcr-json-key
       volumes:
@@ -191,8 +183,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: call-service
-  minReplicas: 0
-  maxReplicas: 1
+  minReplicas: 1
+  maxReplicas: 3
   metrics:
   - type: Resource
     resource:

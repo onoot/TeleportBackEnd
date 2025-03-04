@@ -2,8 +2,67 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-export const config = {
-  port: process.env.PORT || 3000,
+export interface Config {
+  port: number;
+  database: {
+    type: string;
+    host: string;
+    port: number;
+    username: string;
+    password: string;
+    database: string;
+    synchronize: boolean;
+    logging: boolean;
+    entities: string[];
+    migrations: string[];
+    subscribers: string[];
+    cli: {
+      entitiesDir: string;
+      migrationsDir: string;
+      subscribersDir: string;
+    };
+  };
+  jwt: {
+    secret: string;
+    expiresIn: string;
+  };
+  callService: {
+    url: string;
+    healthCheckEndpoint: string;
+  };
+  defaultRoles: {
+    owner: {
+      name: string;
+      permissions: string[];
+      position: number;
+      is_deletable: boolean;
+    };
+    member: {
+      name: string;
+      permissions: string[];
+      position: number;
+      is_deletable: boolean;
+    };
+  };
+  cors: {
+    origin: string;
+    methods: string[];
+    allowedHeaders: string[];
+  };
+  logging: {
+    level: string;
+  };
+  r2: {
+    accountId: string;
+    accessKeyId: string;
+    accessKeySecret: string;
+    bucketName: string;
+    publicUrl: string;
+  };
+}
+
+export const config: Config = {
+  port: Number(process.env.PORT) || 3000,
   
   database: {
     type: 'postgres',
@@ -57,5 +116,13 @@ export const config = {
 
   logging: {
     level: process.env.LOG_LEVEL || 'info'
-  }
+  },
+
+  r2: {
+    accountId: process.env.R2_ACCOUNT_ID || '',
+    accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
+    accessKeySecret: process.env.R2_ACCESS_KEY_SECRET || '',
+    bucketName: process.env.R2_BUCKET_NAME || '',
+    publicUrl: process.env.R2_PUBLIC_URL || '',
+  },
 }; 

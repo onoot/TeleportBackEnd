@@ -1,11 +1,77 @@
 import dotenv from 'dotenv';
-import { Config } from '../types/config';
-import { Permission } from '../entities/Role';
 
 dotenv.config();
 
+export interface Config {
+  port: number;
+  database: {
+    type: string;
+    host: string;
+    port: number;
+    username: string;
+    password: string;
+    database: string;
+    synchronize: boolean;
+    logging: boolean;
+    entities: string[];
+    migrations: string[];
+    subscribers: string[];
+    cli: {
+      entitiesDir: string;
+      migrationsDir: string;
+      subscribersDir: string;
+    };
+  };
+  jwt: {
+    secret: string;
+    expiresIn: string;
+  };
+  callService: {
+    url: string;
+    healthCheckEndpoint: string;
+  };
+  defaultRoles: {
+    owner: {
+      name: string;
+      permissions: string[];
+      position: number;
+      is_deletable: boolean;
+    };
+    member: {
+      name: string;
+      permissions: string[];
+      position: number;
+      is_deletable: boolean;
+    };
+  };
+  cors: {
+    origin: string;
+    methods: string[];
+    allowedHeaders: string[];
+  };
+  logging: {
+    level: string;
+  };
+  kafka: {
+    brokers: string[];
+    ssl: boolean;
+    sasl?: {
+      mechanism: 'plain' | 'scram-sha-256' | 'scram-sha-512';
+      username: string;
+      password: string;
+    };
+  };
+  r2: {
+    accountId: string;
+    accessKeyId: string;
+    accessKeySecret: string;
+    bucketName: string;
+    publicUrl: string;
+  };
+}
+
 export const config: Config = {
-  port: process.env.PORT ? parseInt(process.env.PORT) : 3000,
+  port: Number(process.env.PORT) || 3000,
   
   database: {
     type: 'postgres',
@@ -39,26 +105,13 @@ export const config: Config = {
   defaultRoles: {
     owner: {
       name: 'Owner',
-      permissions: [
-        Permission.MANAGE_SERVER,
-        Permission.MANAGE_ROLES,
-        Permission.MANAGE_CHANNELS,
-        Permission.MANAGE_CATEGORIES,
-        Permission.MANAGE_MEMBERS,
-        Permission.VIEW_CHANNELS,
-        Permission.SEND_MESSAGES,
-        Permission.CONNECT_VOICE
-      ],
+      permissions: ['MANAGE_SERVER', 'MANAGE_ROLES', 'MANAGE_CHANNELS', 'MANAGE_CATEGORIES', 'MANAGE_MEMBERS', 'VIEW_CHANNELS', 'SEND_MESSAGES', 'CONNECT_VOICE'],
       position: 100,
       is_deletable: false
     },
     member: {
       name: 'Member',
-      permissions: [
-        Permission.VIEW_CHANNELS,
-        Permission.SEND_MESSAGES,
-        Permission.CONNECT_VOICE
-      ],
+      permissions: ['VIEW_CHANNELS', 'SEND_MESSAGES', 'CONNECT_VOICE'],
       position: 1,
       is_deletable: false
     }
@@ -79,10 +132,18 @@ export const config: Config = {
     ssl: process.env.KAFKA_SSL === 'true',
     ...(process.env.KAFKA_USERNAME && process.env.KAFKA_PASSWORD && {
       sasl: {
+        mechanism: (process.env.KAFKA_MECHANISM || 'plain') as 'plain' | 'scram-sha-256' | 'scram-sha-512',
         username: process.env.KAFKA_USERNAME,
-        password: process.env.KAFKA_PASSWORD,
-        mechanism: (process.env.KAFKA_MECHANISM || 'plain') as 'plain' | 'scram-sha-256' | 'scram-sha-512'
+        password: process.env.KAFKA_PASSWORD
       }
     })
+  },
+
+  r2: {
+    accountId: process.env.R2_ACCOUNT_ID || '',
+    accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
+    accessKeySecret: process.env.R2_ACCESS_KEY_SECRET || '',
+    bucketName: process.env.R2_BUCKET_NAME || '',
+    publicUrl: process.env.R2_PUBLIC_URL || '',
   }
 }; 

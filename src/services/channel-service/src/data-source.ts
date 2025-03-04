@@ -1,34 +1,27 @@
 import { DataSource } from 'typeorm';
-import { config } from './config';
+import { Role } from './entities/Role';
 import { Server } from './entities/Server';
+import { ServerMember } from './entities/ServerMember';
 import { Category } from './entities/Category';
 import { Channel } from './entities/Channel';
-import { ServerMember } from './entities/ServerMember';
-import { Role } from './entities/Role';
 
 export const AppDataSource = new DataSource({
   type: 'postgres',
-  host: config.database.host,
-  port: config.database.port,
-  username: config.database.username,
-  password: config.database.password,
-  database: config.database.database,
-  synchronize: config.database.synchronize,
-  logging: config.database.logging,
-  entities: [Server, Category, Channel, ServerMember, Role],
+  host: process.env.DB_HOST || 'bexapaskey.beget.app',
+  port: parseInt(process.env.DB_PORT || '5432'),
+  username: process.env.DB_USERNAME || 'cloud_user',
+  password: process.env.DB_PASSWORD || 'Md&7xKRB2RSn',
+  database: process.env.DB_DATABASE || 'default_db',
+  synchronize: true,
+  logging: false,
+  entities: [Role, Server, ServerMember, Category, Channel],
   migrations: [],
   subscribers: []
 });
 
-export async function initializeDataSource() {
-  try {
-    if (!AppDataSource.isInitialized) {
-      await AppDataSource.initialize();
-      console.log('Data Source has been initialized!');
-    }
-    return AppDataSource;
-  } catch (error) {
-    console.error('Error during Data Source initialization:', error);
-    throw error;
+export async function initializeDataSource(): Promise<DataSource> {
+  if (!AppDataSource.isInitialized) {
+    await AppDataSource.initialize();
   }
+  return AppDataSource;
 } 

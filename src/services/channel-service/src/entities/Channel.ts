@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne } from 'typeorm';
 import { Category } from './Category';
 
 export enum ChannelType {
@@ -21,6 +21,9 @@ export class Channel {
   })
   type!: ChannelType;
 
+  @Column({ nullable: true })
+  icon?: string;
+
   @Column()
   position!: number;
 
@@ -32,10 +35,4 @@ export class Channel {
 
   @ManyToOne(() => Category, category => category.channels)
   category!: Category;
-
-  @CreateDateColumn({ type: 'timestamp with time zone' })
-  created_at!: Date;
-
-  @UpdateDateColumn({ type: 'timestamp with time zone' })
-  updated_at!: Date;
 } 

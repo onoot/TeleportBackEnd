@@ -1,4 +1,4 @@
-apiVersion: apps/v1
+﻿apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: user-service
@@ -7,11 +7,6 @@ metadata:
     app: user-service
 spec:
   replicas: 1
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
   selector:
     matchLabels:
       app: user-service
@@ -19,15 +14,11 @@ spec:
     metadata:
       labels:
         app: user-service
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "3000"
-        prometheus.io/path: "/metrics"
     spec:
       containers:
       - name: user-service
-        image: gcr.io/teleport-450320/user-service:latest
-        imagePullPolicy: Always
+        image: local/user-service:latest
+        imagePullPolicy: Never
         ports:
         - containerPort: 3000
           name: http
@@ -51,87 +42,68 @@ spec:
         - name: POSTGRES_HOST
           valueFrom:
             secretKeyRef:
-              name: postgres-secret
-              key: host
+              name: postgres-secrets
+              key: POSTGRES_HOST
         - name: POSTGRES_PORT
-          valueFrom:
-            secretKeyRef:
-              name: postgres-secret
-              key: port
+          value: "5432"
         - name: POSTGRES_DB
           valueFrom:
             secretKeyRef:
-              name: postgres-secret
-              key: database
+              name: postgres-secrets
+              key: POSTGRES_DB
         - name: POSTGRES_USER
           valueFrom:
             secretKeyRef:
-              name: postgres-secret
-              key: user
+              name: postgres-secrets
+              key: POSTGRES_USER
         - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: postgres-secret
-              key: password
+              name: postgres-secrets
+              key: POSTGRES_PASSWORD
         # Redis
         - name: REDIS_HOST
           valueFrom:
             secretKeyRef:
-              name: redis-secret
-              key: host
+              name: redis-secrets
+              key: REDIS_HOST
         - name: REDIS_PORT
           valueFrom:
             secretKeyRef:
-              name: redis-secret
-              key: port
-        - name: REDIS_USER
-          valueFrom:
-            secretKeyRef:
-              name: redis-secret
-              key: user
+              name: redis-secrets
+              key: REDIS_PORT
         - name: REDIS_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: redis-secret
-              key: password
+              name: redis-secrets
+              key: REDIS_PASSWORD
         # JWT
         - name: JWT_SECRET
           valueFrom:
             secretKeyRef:
-              name: jwt-secret
-              key: secret
+              name: app-secrets
+              key: JWT_SECRET
         - name: JWT_EXPIRES_IN
           value: "24h"
         # Kafka
         - name: KAFKA_BROKERS
           valueFrom:
             secretKeyRef:
-              name: kafka-secret
-              key: brokers
-        - name: KAFKA_SSL
-          valueFrom:
-            secretKeyRef:
-              name: kafka-secret
-              key: ssl
+              name: kafka-secrets
+              key: KAFKA_BROKERS
         - name: KAFKA_USERNAME
           valueFrom:
             secretKeyRef:
-              name: kafka-secret
-              key: username
+              name: kafka-secrets
+              key: KAFKA_USERNAME
         - name: KAFKA_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: kafka-secret
-              key: password
+              name: kafka-secrets
+              key: KAFKA_PASSWORD
         # CORS
         - name: CORS_ORIGIN
           value: "*"
-        # MongoDB
-        - name: MONGODB_URI
-          valueFrom:
-            secretKeyRef:
-              name: mongodb-secret
-              key: uri
         readinessProbe:
           httpGet:
             path: /health
@@ -186,27 +158,22 @@ kind: Ingress
 metadata:
   name: user-service-ingress
   namespace: messenger
+  labels:
+    app: user-service
   annotations:
     kubernetes.io/ingress.class: traefik
     traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
 spec:
   rules:
-  - http:
-      paths:
-      - path: /api/v1/users/
-        pathType: Prefix
-        backend:
-          service:
-            name: user-service
-            port:
-              number: 3000
-      - path: /socket.io/
-        pathType: Prefix
-        backend:
-          service:
-            name: user-service
-            port:
-              number: 3001
+    - http:
+        paths:
+          - path: /api/users
+            pathType: Prefix
+            backend:
+              service:
+                name: user-service
+                port:
+                  number: 3000
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
@@ -246,3 +213,33 @@ spec:
       - type: Pods
         value: 1
         periodSeconds: 60 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

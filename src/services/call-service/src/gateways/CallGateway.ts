@@ -1,9 +1,10 @@
 import { Server as HttpServer } from 'http';
-import { Socket } from 'socket.io';
-import { BaseWebSocketGateway, AuthenticatedSocket } from '@shared/websocket/BaseWebSocketGateway';
+import { WebSocketService } from '../services/WebSocketService';
 import { CallService } from '../services/CallService';
 import { KafkaService } from '../services/KafkaService';
 import { RedisService } from '../services/RedisService';
+import { CallParticipant } from '../entities';
+import { ParticipantStatus } from '../types';
 
 interface CallSignal {
   type: 'offer' | 'answer' | 'ice-candidate';
@@ -11,129 +12,150 @@ interface CallSignal {
   targetUserId: number;
 }
 
-export class CallGateway extends BaseWebSocketGateway {
+export class CallGateway {
+  private readonly wsService: WebSocketService;
+
   constructor(
-    server: HttpServer,
-    redisService: RedisService,
-    private callService: CallService,
-    private kafkaService: KafkaService
+    httpServer: HttpServer,
+    private readonly callService: CallService,
+    private readonly kafkaService: KafkaService,
+    private readonly redisService: RedisService
   ) {
-    super(server, redisService);
+    this.wsService = WebSocketService.getInstance(httpServer);
+    this.setupHandlers();
   }
 
-  protected setupHandlers(): void {
-    this.io.on('connection', (socket: AuthenticatedSocket) => {
-      socket.on('join_call', async (roomId: string) => {
-        try {
-          // Проверяем права доступа и статус комнаты
-          const room = await this.callService.getRoomById(roomId);
-          if (!room) {
-            throw new Error('Room not found');
-          }
-          
-          await this.callService.checkAccess(socket.userId, roomId);
-          
-          // Подписываем на комнату
-          await this.subscribeToRoom(socket, `call:${roomId}`);
-          
-          // Обновляем статус участника
-          await this.callService.addParticipant(roomId, socket.userId);
-          
-          // Получаем текущих участников
-          const participants = await this.callService.getRoomParticipants(roomId);
-          
-          // Отправляем информацию о комнате
-          socket.emit('call_joined', {
-            roomId,
-            participants
+  private setupHandlers(): void {
+    // Обработка подключения к комнате
+    this.wsService.on('call:join', async (userId: number, roomId: string) => {
+      try {
+        const call = await this.callService.getCallByRoomId(roomId);
+        if (!call) {
+          this.wsService.sendToUser(userId, {
+            type: 'call:error',
+            message: 'Call not found'
           });
-          
-          // Уведомляем других участников
-          socket.broadcast.to(`call:${roomId}`).emit('participant_joined', {
-            userId: socket.userId,
-            timestamp: new Date().toISOString()
-          });
-          
-          // Сохраняем в Redis для быстрого доступа
-          await this.redisService.addCallParticipant(roomId, socket.userId);
-        } catch (error) {
-          socket.emit('error', { message: 'Failed to join call' });
+          return;
         }
-      });
 
-      socket.on('leave_call', async (roomId: string) => {
-        await this.handleCallLeave(socket, roomId);
-      });
+        const participant = await this.callService.addParticipant(call.id, userId);
+        this.wsService.addUserToRoom(roomId, userId);
 
-      socket.on('signal', async (data: CallSignal) => {
-        try {
-          const { targetUserId, type, payload } = data;
-          const targetSocket = await this.findUserSocket(targetUserId);
-          
-          if (targetSocket) {
-            targetSocket.emit('signal', {
-              type,
-              payload,
-              fromUserId: socket.userId
-            });
-          }
-        } catch (error) {
-          socket.emit('error', { message: 'Failed to send signal' });
-        }
-      });
-
-      socket.on('mute_audio', async (roomId: string, muted: boolean) => {
-        await this.broadcastToRoom(`call:${roomId}`, 'participant_audio_changed', {
-          userId: socket.userId,
-          muted
+        const participants = await this.callService.getActiveParticipants(call.id);
+        this.wsService.sendToUser(userId, {
+          type: 'call:participants',
+          participants
         });
-        await this.callService.updateParticipantAudio(roomId, socket.userId, !muted);
-      });
-
-      socket.on('mute_video', async (roomId: string, muted: boolean) => {
-        await this.broadcastToRoom(`call:${roomId}`, 'participant_video_changed', {
-          userId: socket.userId,
-          muted
+        this.wsService.sendToRoom(roomId, {
+          type: 'call:participant_joined',
+          participant
         });
-        await this.callService.updateParticipantVideo(roomId, socket.userId, !muted);
-      });
-
-      socket.on('disconnect', async () => {
-        // Обрабатываем выход из всех звонков
-        for (const sub of socket.subscriptions) {
-          if (sub.startsWith('call:')) {
-            const roomId = sub.split(':')[1];
-            await this.handleCallLeave(socket, roomId);
-          }
-        }
-      });
-    });
-  }
-
-  private async handleCallLeave(socket: AuthenticatedSocket, roomId: string): Promise<void> {
-    try {
-      await this.unsubscribeFromRoom(socket, `call:${roomId}`);
-      await this.callService.removeParticipant(roomId, socket.userId);
-      await this.redisService.removeCallParticipant(roomId, socket.userId);
-
-      // Уведомляем остальных участников
-      await this.broadcastToRoom(`call:${roomId}`, 'participant_left', {
-        userId: socket.userId,
-        timestamp: new Date().toISOString()
-      });
-
-      // Проверяем, остались ли участники
-      const participants = await this.callService.getRoomParticipants(roomId);
-      if (participants.length === 0) {
-        await this.callService.endCall(roomId);
+      } catch (error) {
+        console.error('Error joining call:', error);
+        this.wsService.sendToUser(userId, {
+          type: 'call:error',
+          message: 'Failed to join call'
+        });
       }
-    } catch (error) {
-      socket.emit('error', { message: 'Failed to leave call' });
-    }
-  }
+    });
 
-  private async findUserSocket(userId: number): Promise<AuthenticatedSocket | null> {
-    const sockets = await this.io.fetchSockets();
-    return sockets.find(socket => (socket as AuthenticatedSocket).userId === userId) as AuthenticatedSocket || null;
+    // Обработка выхода из комнаты
+    this.wsService.on('call:leave', async (userId: number, roomId: string) => {
+      try {
+        const call = await this.callService.getCallByRoomId(roomId);
+        if (!call) return;
+
+        const participant = await this.callService.getParticipant(call.id, userId);
+        if (participant) {
+          await this.callService.updateParticipantStatus(participant, ParticipantStatus.DISCONNECTED);
+        }
+
+        this.wsService.removeUserFromRoom(roomId, userId);
+        this.wsService.sendToRoom(roomId, {
+          type: 'call:participant_left',
+          userId
+        });
+      } catch (error) {
+        console.error('Error leaving call:', error);
+      }
+    });
+
+    // Обработка WebRTC сигналов
+    this.wsService.on('call:signal', async (userId: number, signal: CallSignal) => {
+      try {
+        this.wsService.sendToUser(signal.targetUserId, {
+          type: 'call:signal',
+          signal: {
+            type: signal.type,
+            payload: signal.payload,
+            fromUserId: userId
+          }
+        });
+      } catch (error) {
+        console.error('Error sending signal:', error);
+      }
+    });
+
+    // Обработка включения/выключения аудио
+    this.wsService.on('call:toggle_audio', async (userId: number, roomId: string, enabled: boolean) => {
+      try {
+        const call = await this.callService.getCallByRoomId(roomId);
+        if (!call) return;
+
+        const participant = await this.callService.getParticipant(call.id, userId);
+        if (participant) {
+          await this.callService.updateParticipantAudioState(participant, enabled);
+        }
+
+        this.wsService.sendToRoom(roomId, {
+          type: 'call:audio_state',
+          userId,
+          enabled
+        });
+      } catch (error) {
+        console.error('Error toggling audio:', error);
+      }
+    });
+
+    // Обработка включения/выключения видео
+    this.wsService.on('call:toggle_video', async (userId: number, roomId: string, enabled: boolean) => {
+      try {
+        const call = await this.callService.getCallByRoomId(roomId);
+        if (!call) return;
+
+        const participant = await this.callService.getParticipant(call.id, userId);
+        if (participant) {
+          await this.callService.updateParticipantVideoState(participant, enabled);
+        }
+
+        this.wsService.sendToRoom(roomId, {
+          type: 'call:video_state',
+          userId,
+          enabled
+        });
+      } catch (error) {
+        console.error('Error toggling video:', error);
+      }
+    });
+
+    // Обработка отключения пользователя
+    this.wsService.on('user:disconnected', async (userId: number, roomId: string) => {
+      try {
+        const call = await this.callService.getCallByRoomId(roomId);
+        if (!call) return;
+
+        const participant = await this.callService.getParticipant(call.id, userId);
+        if (participant) {
+          await this.callService.updateParticipantStatus(participant, ParticipantStatus.DISCONNECTED);
+        }
+
+        this.wsService.sendToRoom(roomId, {
+          type: 'call:participant_left',
+          userId
+        });
+      } catch (error) {
+        console.error('Error handling user disconnect:', error);
+      }
+    });
   }
 } 

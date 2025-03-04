@@ -31,6 +31,13 @@ interface Config {
     secret: string;
     expiresIn: string;
   };
+  r2: {
+    accountId: string;
+    accessKeyId: string;
+    accessKeySecret: string;
+    bucketName: string;
+    publicUrl: string;
+  };
 }
 
 // Функция для получения обязательной переменной окружения
@@ -80,5 +87,13 @@ export const config: Config = {
   jwt: {
     secret: process.env.JWT_SECRET || 'default-secret-key',
     expiresIn: process.env.JWT_EXPIRES_IN || '24h',
+  },
+  
+  r2: {
+    accountId: process.env.R2_ACCOUNT_ID || '',
+    accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
+    accessKeySecret: process.env.R2_ACCESS_KEY_SECRET || '',
+    bucketName: process.env.R2_BUCKET_NAME || '',
+    publicUrl: process.env.R2_PUBLIC_URL || '',
   },
 }; 

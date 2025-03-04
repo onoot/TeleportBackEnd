@@ -17,6 +17,13 @@ export interface IReaction {
   createdAt: Date;
 }
 
+export interface Attachment {
+  url: string;
+  mimeType: string;
+  fileName: string;
+  size: number;
+}
+
 export interface IMessage extends Document {
   _id: string;
   type: MessageType;
@@ -25,7 +32,7 @@ export interface IMessage extends Document {
   serverId?: string;
   recipientId?: string;
   content: string;
-  attachments?: string[];
+  attachments?: Attachment[];
   status: MessageStatus;
   reactions: IReaction[];
   replyToId?: string | null;
@@ -99,7 +106,14 @@ const MessageSchema = new Schema<IMessage>(
       required: true
     },
     attachments: {
-      type: [String],
+      type: [
+        {
+          url: String,
+          mimeType: String,
+          fileName: String,
+          size: Number
+        }
+      ],
       default: []
     },
     status: {

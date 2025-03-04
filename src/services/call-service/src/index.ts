@@ -255,4 +255,8 @@ process.on('unhandledRejection', (reason, promise) => {
   process.exit(1);
 });
 
-bootstrap(); 
+// Запускаем приложение
+bootstrap().catch((error) => {
+  console.error('Failed to bootstrap application:', error);
+  process.exit(1);
+}); 

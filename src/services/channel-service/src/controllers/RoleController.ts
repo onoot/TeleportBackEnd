@@ -1,276 +1,200 @@
 import { Request, Response } from 'express';
-import { getRepository } from 'typeorm';
-import { Role, Permission, DefaultRole } from '../entities/Role';
+import { Repository } from 'typeorm';
+import { Role } from '../entities/Role';
 import { Server } from '../entities/Server';
 import { ServerMember } from '../entities/ServerMember';
+import { Permission, DefaultRole } from '../types/role';
+import { AppDataSource } from '../data-source';
 
 export class RoleController {
-  // Создание новой роли
-  static async createRole(req: Request, res: Response) {
+  private static instance: RoleController | null = null;
+  private roleRepository!: Repository<Role>;
+  private serverRepository!: Repository<Server>;
+  private memberRepository!: Repository<ServerMember>;
+  private initialized = false;
+
+  private constructor() {}
+
+  public static async getInstance(): Promise<RoleController> {
+    if (!RoleController.instance) {
+      const controller = new RoleController();
+      await controller.initialize();
+      RoleController.instance = controller;
+    }
+    return RoleController.instance;
+  }
+
+  private async initialize() {
+    if (this.initialized) return;
+
     try {
-      const { name, permissions, position } = req.body;
-      const serverId = parseInt(req.params.serverId);
-      const userId = req.user.id;
-
-      const serverRepo = getRepository(Server);
-      const memberRepo = getRepository(ServerMember);
-      const roleRepo = getRepository(Role);
-
-      // Проверяем права пользователя
-      const member = await memberRepo.findOne({
-        where: { server_id: serverId, user_id: userId },
-        relations: ['roles']
-      });
-
-      if (!member || !member.roles.some(role => 
-        role.permissions.includes(Permission.MANAGE_ROLES)
-      )) {
-        return res.status(403).json({ message: 'Insufficient permissions' });
+      if (!AppDataSource.isInitialized) {
+        await AppDataSource.initialize();
       }
 
-      // Создаем роль
+      this.roleRepository = AppDataSource.getRepository(Role);
+      this.serverRepository = AppDataSource.getRepository(Server);
+      this.memberRepository = AppDataSource.getRepository(ServerMember);
+      this.initialized = true;
+      console.log('RoleController initialized successfully');
+    } catch (error) {
+      console.error('Failed to initialize RoleController:', error);
+      throw error;
+    }
+  }
+
+  // Создание новой роли
+  async createRole(req: Request, res: Response) {
+    try {
+      const serverId = parseInt(req.params.serverId);
+      const { name, permissions, position } = req.body;
+
+      const server = await this.serverRepository.findOne({
+        where: { id: serverId }
+      });
+
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
       const role = new Role();
       role.name = name;
-      role.server_id = serverId;
       role.permissions = permissions;
       role.position = position;
+      role.server_id = serverId;
       role.is_deletable = true;
 
-      const savedRole = await roleRepo.save(role);
+      const savedRole = await this.roleRepository.save(role);
       res.status(201).json(savedRole);
     } catch (error) {
       console.error('Error creating role:', error);
-      res.status(500).json({ message: 'Error creating role' });
+      res.status(500).json({ message: 'Internal server error' });
     }
   }
 
   // Обновление роли
-  static async updateRole(req: Request, res: Response) {
+  async updateRole(req: Request, res: Response) {
     try {
-      const { name, permissions, position } = req.body;
       const roleId = parseInt(req.params.id);
-      const userId = req.user.id;
+      const { name, permissions, position } = req.body;
 
-      const roleRepo = getRepository(Role);
-      const memberRepo = getRepository(ServerMember);
-
-      const role = await roleRepo.findOne({
-        where: { id: roleId },
-        relations: ['server']
+      const role = await this.roleRepository.findOne({
+        where: { id: roleId }
       });
 
       if (!role) {
         return res.status(404).json({ message: 'Role not found' });
       }
 
-      // Проверяем права пользователя
-      const member = await memberRepo.findOne({
-        where: { server_id: role.server_id, user_id: userId },
-        relations: ['roles']
-      });
-
-      if (!member || !member.roles.some(r => 
-        r.permissions.includes(Permission.MANAGE_ROLES)
-      )) {
-        return res.status(403).json({ message: 'Insufficient permissions' });
-      }
-
-      // Нельзя изменять дефолтные роли
       if (role.default_role) {
         return res.status(403).json({ message: 'Cannot modify default roles' });
       }
 
-      role.name = name || role.name;
-      role.permissions = permissions || role.permissions;
-      role.position = position ?? role.position;
+      if (name) role.name = name;
+      if (permissions) role.permissions = permissions;
+      if (position !== undefined) role.position = position;
 
-      const updatedRole = await roleRepo.save(role);
+      const updatedRole = await this.roleRepository.save(role);
       res.json(updatedRole);
     } catch (error) {
       console.error('Error updating role:', error);
-      res.status(500).json({ message: 'Error updating role' });
+      res.status(500).json({ message: 'Internal server error' });
     }
   }
 
   // Удаление роли
-  static async deleteRole(req: Request, res: Response) {
+  async deleteRole(req: Request, res: Response) {
     try {
       const roleId = parseInt(req.params.id);
-      const userId = req.user.id;
 
-      const roleRepo = getRepository(Role);
-      const memberRepo = getRepository(ServerMember);
-
-      const role = await roleRepo.findOne({
-        where: { id: roleId },
-        relations: ['server']
+      const role = await this.roleRepository.findOne({
+        where: { id: roleId }
       });
 
       if (!role) {
         return res.status(404).json({ message: 'Role not found' });
       }
 
-      // Проверяем права пользователя
-      const member = await memberRepo.findOne({
-        where: { server_id: role.server_id, user_id: userId },
-        relations: ['roles']
-      });
-
-      if (!member || !member.roles.some(r => 
-        r.permissions.includes(Permission.MANAGE_ROLES)
-      )) {
-        return res.status(403).json({ message: 'Insufficient permissions' });
-      }
-
-      // Нельзя удалять дефолтные роли
       if (!role.is_deletable) {
         return res.status(403).json({ message: 'Cannot delete default roles' });
       }
 
-      await roleRepo.remove(role);
-      res.json({ message: 'Role deleted successfully' });
+      await this.roleRepository.remove(role);
+      res.status(204).send();
     } catch (error) {
       console.error('Error deleting role:', error);
-      res.status(500).json({ message: 'Error deleting role' });
+      res.status(500).json({ message: 'Internal server error' });
     }
   }
 
   // Получение всех ролей сервера
-  static async getServerRoles(req: Request, res: Response) {
+  async getServerRoles(req: Request, res: Response) {
     try {
       const serverId = parseInt(req.params.serverId);
-      const userId = req.user.id;
 
-      const memberRepo = getRepository(ServerMember);
-      const roleRepo = getRepository(Role);
-
-      // Проверяем, является ли пользователь участником сервера
-      const member = await memberRepo.findOne({
-        where: { server_id: serverId, user_id: userId }
-      });
-
-      if (!member) {
-        return res.status(403).json({ message: 'Not a member of this server' });
-      }
-
-      const roles = await roleRepo.find({
+      const roles = await this.roleRepository.find({
         where: { server_id: serverId },
         order: { position: 'DESC' }
       });
 
       res.json(roles);
     } catch (error) {
-      console.error('Error getting roles:', error);
-      res.status(500).json({ message: 'Error getting roles' });
+      console.error('Error getting server roles:', error);
+      res.status(500).json({ message: 'Internal server error' });
     }
   }
 
   // Назначение роли участнику
-  static async assignRole(req: Request, res: Response) {
+  async assignRole(req: Request, res: Response) {
     try {
-      const { userId: targetUserId } = req.body;
       const roleId = parseInt(req.params.roleId);
-      const userId = req.user.id;
+      const { memberId } = req.body;
 
-      const roleRepo = getRepository(Role);
-      const memberRepo = getRepository(ServerMember);
-
-      const role = await roleRepo.findOne({
-        where: { id: roleId },
-        relations: ['server']
-      });
-
-      if (!role) {
-        return res.status(404).json({ message: 'Role not found' });
-      }
-
-      // Проверяем права пользователя
-      const member = await memberRepo.findOne({
-        where: { server_id: role.server_id, user_id: userId },
+      const member = await this.memberRepository.findOne({
+        where: { id: memberId },
         relations: ['roles']
       });
 
-      if (!member || !member.roles.some(r => 
-        r.permissions.includes(Permission.MANAGE_ROLES)
-      )) {
-        return res.status(403).json({ message: 'Insufficient permissions' });
-      }
-
-      // Находим целевого пользователя
-      const targetMember = await memberRepo.findOne({
-        where: { server_id: role.server_id, user_id: targetUserId },
-        relations: ['roles']
+      const role = await this.roleRepository.findOne({
+        where: { id: roleId }
       });
 
-      if (!targetMember) {
-        return res.status(404).json({ message: 'Target user not found in server' });
+      if (!member || !role) {
+        return res.status(404).json({ message: 'Member or role not found' });
       }
 
-      // Добавляем роль
-      targetMember.roles = [...targetMember.roles, role];
-      await memberRepo.save(targetMember);
+      member.roles.push(role);
+      await this.memberRepository.save(member);
 
       res.json({ message: 'Role assigned successfully' });
     } catch (error) {
       console.error('Error assigning role:', error);
-      res.status(500).json({ message: 'Error assigning role' });
+      res.status(500).json({ message: 'Internal server error' });
     }
   }
 
   // Удаление роли у участника
-  static async removeRole(req: Request, res: Response) {
+  async removeRole(req: Request, res: Response) {
     try {
-      const { userId: targetUserId } = req.body;
       const roleId = parseInt(req.params.roleId);
-      const userId = req.user.id;
+      const { memberId } = req.body;
 
-      const roleRepo = getRepository(Role);
-      const memberRepo = getRepository(ServerMember);
-
-      const role = await roleRepo.findOne({
-        where: { id: roleId },
-        relations: ['server']
-      });
-
-      if (!role) {
-        return res.status(404).json({ message: 'Role not found' });
-      }
-
-      // Проверяем права пользователя
-      const member = await memberRepo.findOne({
-        where: { server_id: role.server_id, user_id: userId },
+      const member = await this.memberRepository.findOne({
+        where: { id: memberId },
         relations: ['roles']
       });
 
-      if (!member || !member.roles.some(r => 
-        r.permissions.includes(Permission.MANAGE_ROLES)
-      )) {
-        return res.status(403).json({ message: 'Insufficient permissions' });
+      if (!member) {
+        return res.status(404).json({ message: 'Member not found' });
       }
 
-      // Находим целевого пользователя
-      const targetMember = await memberRepo.findOne({
-        where: { server_id: role.server_id, user_id: targetUserId },
-        relations: ['roles']
-      });
-
-      if (!targetMember) {
-        return res.status(404).json({ message: 'Target user not found in server' });
-      }
-
-      // Нельзя удалять дефолтную роль участника
-      if (role.default_role === DefaultRole.MEMBER) {
-        return res.status(403).json({ message: 'Cannot remove default member role' });
-      }
-
-      // Удаляем роль
-      targetMember.roles = targetMember.roles.filter(r => r.id !== role.id);
-      await memberRepo.save(targetMember);
+      member.roles = member.roles.filter(role => role.id !== roleId);
+      await this.memberRepository.save(member);
 
       res.json({ message: 'Role removed successfully' });
     } catch (error) {
       console.error('Error removing role:', error);
-      res.status(500).json({ message: 'Error removing role' });
+      res.status(500).json({ message: 'Internal server error' });
     }
   }
 } 

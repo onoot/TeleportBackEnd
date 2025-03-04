@@ -1,4 +1,4 @@
-apiVersion: apps/v1
+﻿apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: message-service
@@ -19,12 +19,35 @@ spec:
         prometheus.io/port: "3000"
         prometheus.io/path: "/metrics"
     spec:
-      imagePullSecrets:
-      - name: gcr-json-key
       containers:
       - name: message-service
-        image: gcr.io/teleport-450320/message-service:latest
-        imagePullPolicy: Always
+        image: local/message-service:latest
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
+        imagePullPolicy: Never
         ports:
         - containerPort: 3000
           name: http
@@ -51,6 +74,50 @@ spec:
             secretKeyRef:
               name: jwt-secret
               key: secret
+        # R2 Storage
+        - name: R2_ACCOUNT_ID
+          valueFrom:
+            secretKeyRef:
+              name: r2-secret
+              key: account_id
+        - name: R2_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: r2-secret
+              key: access_key_id
+        - name: R2_ACCESS_KEY_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: r2-secret
+              key: access_key_secret
+        - name: R2_BUCKET_NAME
+          valueFrom:
+            secretKeyRef:
+              name: r2-secret
+              key: bucket_name
+        - name: R2_PUBLIC_URL
+          valueFrom:
+            secretKeyRef:
+              name: r2-secret
+              key: public_url
+        # Kafka
+        - name: KAFKA_BROKERS
+          valueFrom:
+            secretKeyRef:
+              name: kafka-secrets
+              key: KAFKA_BROKERS
+        - name: KAFKA_SSL
+          value: "false"
+        - name: KAFKA_SASL_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: kafka-secrets
+              key: KAFKA_SASL_USERNAME
+        - name: KAFKA_SASL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: kafka-secrets
+              key: KAFKA_SASL_PASSWORD
         resources:
           requests:
             cpu: "100m"
@@ -143,3 +210,33 @@ spec:
       target:
         type: Utilization
         averageUtilization: 80 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

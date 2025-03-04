@@ -1,7 +1,7 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm';
 import { Category } from './Category';
-import { ServerMember } from './ServerMember';
 import { Role } from './Role';
+import { ServerMember } from './ServerMember';
 
 @Entity('servers')
 export class Server {
@@ -15,26 +15,17 @@ export class Server {
   description?: string;
 
   @Column({ nullable: true })
-  icon?: string;
+  icon_url?: string;
 
   @Column()
-  owner_id!: number;
-
-  @Column({ unique: true })
-  invite_code!: string;
+  owner_id!: string;
 
   @OneToMany(() => Category, category => category.server)
   categories!: Category[];
 
-  @OneToMany(() => ServerMember, member => member.server)
-  members!: ServerMember[];
-
   @OneToMany(() => Role, role => role.server)
   roles!: Role[];
 
-  @CreateDateColumn({ type: 'timestamp with time zone' })
-  created_at!: Date;
-
-  @UpdateDateColumn({ type: 'timestamp with time zone' })
-  updated_at!: Date;
+  @OneToMany(() => ServerMember, member => member.server)
+  members!: ServerMember[];
 } 

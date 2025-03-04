@@ -4,8 +4,8 @@ import { CallType, ParticipantStatus } from '../types';
 
 @Entity('call_participants')
 export class CallParticipant {
-  @PrimaryGeneratedColumn()
-  id!: number;
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
 
   @Column({ name: 'call_id', type: 'uuid' })
   call_id!: string;
@@ -27,9 +27,15 @@ export class CallParticipant {
     type: 'varchar',
     length: 10,
     enum: CallType,
-    nullable: true
+    default: CallType.AUDIO
   })
-  call_type!: CallType | null;
+  call_type!: CallType;
+
+  @Column({ name: 'audio_enabled', type: 'boolean', default: true })
+  audio_enabled!: boolean;
+
+  @Column({ name: 'video_enabled', type: 'boolean', default: false })
+  video_enabled!: boolean;
 
   @Column({ name: 'joined_at', type: 'timestamp with time zone', nullable: true })
   joined_at!: Date | null;
@@ -48,11 +54,13 @@ export class CallParticipant {
   updated_at!: Date;
 
   constructor() {
-    this.id = 0;
+    this.id = '';
     this.call_id = '';
     this.user_id = 0;
     this.status = ParticipantStatus.INVITED;
-    this.call_type = null;
+    this.call_type = CallType.AUDIO;
+    this.audio_enabled = true;
+    this.video_enabled = false;
     this.joined_at = null;
     this.left_at = null;
     this.call = new Call();

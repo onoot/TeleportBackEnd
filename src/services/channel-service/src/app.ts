@@ -3,10 +3,12 @@ import express from 'express';
 import { Server as HttpServer } from 'http';
 import { Server as SocketServer } from 'socket.io';
 import cors from 'cors';
-import { initializeDataSource } from './data-source';
+import { initializeDataSource, AppDataSource } from './data-source';
 import { config } from './config';
 import routes from './routes';
 import { notificationService } from './services/NotificationService';
+import { RoleService } from './services/RoleService';
+import { ServerController } from './controllers/ServerController';
 
 export class App {
   public app: express.Application;
@@ -32,6 +34,14 @@ export class App {
       // Инициализируем базу данных
       await initializeDataSource();
       console.log('Database initialized successfully');
+
+      // Дожидаемся инициализации базы данных перед инициализацией контроллеров
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Инициализируем контроллеры и сервисы последовательно
+      await RoleService.getInstance();
+      await ServerController.getInstance();
+      console.log('Controllers and services initialized successfully');
 
       // Инициализируем Kafka
       await notificationService.connect();
@@ -84,6 +94,7 @@ export class App {
   public async close() {
     try {
       await notificationService.disconnect();
+      await AppDataSource.destroy();
       this.server.close();
     } catch (error) {
       console.error('Error during shutdown:', error);

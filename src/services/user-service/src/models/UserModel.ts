@@ -1,6 +1,8 @@
 import { Pool } from 'pg';
 import bcrypt from 'bcrypt';
 import { config } from '../../config';
+import { Entity, Column, PrimaryGeneratedColumn, BaseEntity } from 'typeorm';
+import { AppDataSource } from '../data-source';
 
 export interface UserSettings {
     notifications?: {
@@ -49,18 +51,40 @@ export interface UserSearchResponse {
     status: string;
 }
 
-export interface User {
-    id: number;
-    username: string;
-    email: string;
-    password: string;
+@Entity('users')
+export class User extends BaseEntity {
+    @PrimaryGeneratedColumn()
+    id!: number;
+
+    @Column()
+    username!: string;
+
+    @Column()
+    email!: string;
+
+    @Column()
+    password!: string;
+
+    @Column({ nullable: true })
     avatar?: string;
-    status: 'online' | 'offline';
-    email_verified: boolean;
-    settings: UserSettings;
+
+    @Column()
+    status!: 'online' | 'offline';
+
+    @Column()
+    email_verified!: boolean;
+
+    @Column({ type: 'jsonb' })
+    settings!: UserSettings;
+
+    @Column({ type: 'timestamp', nullable: true })
     last_seen?: Date;
-    created_at: Date;
-    updated_at: Date;
+
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+    created_at!: Date;
+
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+    updated_at!: Date;
 }
 
 export class UserModelClass {
@@ -315,6 +339,10 @@ export class UserModelClass {
             console.error('Error adding emailverified column:', error);
             throw error;
         }
+    }
+
+    static async update(id: string, data: Partial<User>): Promise<void> {
+        await AppDataSource.getRepository(User).update(id, data);
     }
 }
 

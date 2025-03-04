@@ -7,57 +7,56 @@ declare global {
   namespace Express {
     interface Request {
       user?: {
-        id: number;
-        email: string;
+        id: string;
+        username: string;
+        roles: string[];
       };
     }
   }
 }
 
-export const verifyToken = async (token: string): Promise<number | null> => {
+export function verifyToken(token: string): { id: string; username: string; roles: string[] } {
   try {
-    const decoded = jwt.verify(token, config.jwt.secret) as {
-      id: number;
-      email: string;
+    const decoded = jwt.verify(token, config.jwt.secret) as { id: string; username: string; roles: string[] };
+    return {
+      id: decoded.id,
+      username: decoded.username,
+      roles: decoded.roles
     };
-    return decoded.id;
   } catch (error) {
-    logger.error('Token verification failed:', error);
-    return null;
+    throw new Error('Invalid token');
   }
-};
+}
 
-export const authMiddleware = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
+export function extractToken(req: Request): string {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    throw new Error('No authorization header');
+  }
+
+  const [bearer, token] = authHeader.split(' ');
+  if (bearer !== 'Bearer' || !token) {
+    throw new Error('Invalid authorization header format');
+  }
+
+  return token;
+}
+
+export function extractUserFromToken(req: Request): void {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) {
-      res.status(401).json({ error: 'No authorization header' });
-      return;
-    }
+    const token = extractToken(req);
+    const decoded = verifyToken(token);
+    req.user = decoded;
+  } catch (error) {
+    throw new Error('Failed to extract user from token');
+  }
+}
 
-    const token = authHeader.split(' ')[1];
-    if (!token) {
-      res.status(401).json({ error: 'No token provided' });
-      return;
-    }
-
-    const userId = await verifyToken(token);
-    if (!userId) {
-      res.status(401).json({ error: 'Invalid token' });
-      return;
-    }
-
-    req.user = {
-      id: userId,
-      email: '' // Email не требуется для текущей функциональности
-    };
+export const authMiddleware = (req: Request, res: Response, next: NextFunction): void => {
+  try {
+    extractUserFromToken(req);
     next();
   } catch (error) {
-    logger.error('Auth middleware error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(401).json({ error: 'Unauthorized' });
   }
 }; 

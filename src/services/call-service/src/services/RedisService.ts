@@ -1,44 +1,70 @@
-import { Injectable } from '@nestjs/common';
-import { Redis } from 'ioredis';
+import Redis from 'ioredis';
+import { IRedisService } from '../interfaces/RedisService';
 
-@Injectable()
-export class RedisService {
-  private readonly redis: Redis;
+export class RedisService implements IRedisService {
+  private client: Redis;
 
   constructor() {
-    this.redis = new Redis({
+    this.client = new Redis({
       host: process.env.REDIS_HOST || 'localhost',
       port: parseInt(process.env.REDIS_PORT || '6379'),
-      password: process.env.REDIS_PASSWORD,
-      db: parseInt(process.env.REDIS_DB || '0')
+      password: process.env.REDIS_PASSWORD
+    });
+
+    this.client.on('error', (error) => {
+      console.error('Redis error:', error);
+    });
+
+    this.client.on('connect', () => {
+      console.log('Successfully connected to Redis');
     });
   }
 
-  async get(key: string): Promise<string | null> {
-    return this.redis.get(key);
+  public async get(key: string): Promise<string | null> {
+    return this.client.get(key);
   }
 
-  async set(key: string, value: string, ttl?: number): Promise<void> {
+  public async set(key: string, value: string, ttl?: number): Promise<void> {
     if (ttl) {
-      await this.redis.setex(key, ttl, value);
+      await this.client.set(key, value, 'EX', ttl);
     } else {
-      await this.redis.set(key, value);
+      await this.client.set(key, value);
     }
   }
 
-  async del(key: string): Promise<void> {
-    await this.redis.del(key);
+  public async del(key: string): Promise<void> {
+    await this.client.del(key);
+  }
+
+  public async sadd(key: string, ...members: string[]): Promise<number> {
+    return this.client.sadd(key, ...members);
+  }
+
+  public async srem(key: string, ...members: string[]): Promise<number> {
+    return this.client.srem(key, ...members);
+  }
+
+  public async smembers(key: string): Promise<string[]> {
+    return this.client.smembers(key);
+  }
+
+  public async exists(key: string): Promise<number> {
+    return this.client.exists(key);
+  }
+
+  public async expire(key: string, seconds: number): Promise<number> {
+    return this.client.expire(key, seconds);
   }
 
   async addCallParticipant(roomId: string, userId: number): Promise<void> {
-    await this.redis.sadd(`call:participants:${roomId}`, userId.toString());
+    await this.sadd(`call:participants:${roomId}`, userId.toString());
   }
 
   async removeCallParticipant(roomId: string, userId: number): Promise<void> {
-    await this.redis.srem(`call:participants:${roomId}`, userId.toString());
+    await this.srem(`call:participants:${roomId}`, userId.toString());
   }
 
   async getCallParticipants(roomId: string): Promise<string[]> {
-    return this.redis.smembers(`call:participants:${roomId}`);
+    return this.smembers(`call:participants:${roomId}`);
   }
 } 

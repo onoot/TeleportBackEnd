@@ -1,22 +1,23 @@
 import { Consumer } from 'kafkajs';
-import { Server as SocketServer } from 'socket.io';
+import { Server } from 'socket.io';
 import { randomUUID } from 'crypto';
 import { logger } from '../utils/logger';
 import { NotificationStore } from './notification.store';
-import { NotificationType, Notification, MessageNotificationData, CallNotificationData, ChannelNotificationData, FriendRequestNotificationData } from '../types/notification.types';
+import { NotificationType, Notification, MessageNotificationData, CallNotificationData, ChannelNotificationData, FriendRequestNotificationData, NotificationData } from '../types/notification.types';
 import { verifyToken } from '../middleware/auth';
 import { Redis } from 'ioredis';
 import webpush from 'web-push';
 import { config } from '../config';
+import { v4 as uuidv4 } from 'uuid';
 
 export class NotificationService {
   private redis: Redis;
-  private io: SocketServer;
+  private io: Server;
   private connectedUsers: Map<string, string[]> = new Map(); // userId -> socketIds[]
 
   constructor(
     private consumer: Consumer,
-    io: SocketServer,
+    io: Server,
     private notificationStore: NotificationStore
   ) {
     this.redis = new Redis(config.redis);
@@ -378,5 +379,46 @@ export class NotificationService {
     }
 
     return counts;
+  }
+
+  async handleEvent(event: { type: NotificationType; userId: string; data: NotificationData }): Promise<void> {
+    try {
+      const notification: Notification = {
+        id: uuidv4(),
+        type: event.type,
+        userId: event.userId,
+        createdAt: new Date(),
+        isRead: false,
+        data: event.data
+      };
+
+      // Сохраняем уведомление
+      await this.notificationStore.addNotification(notification);
+
+      // Отправляем уведомление через WebSocket
+      this.io.to(`user:${event.userId}`).emit('notification', notification);
+    } catch (error) {
+      console.error('Error handling notification event:', error);
+      throw error;
+    }
+  }
+
+  async getUserNotifications(userId: string): Promise<Notification[]> {
+    return this.notificationStore.getNotifications(userId);
+  }
+
+  async markNotificationAsRead(userId: string, notificationId: string): Promise<void> {
+    await this.notificationStore.markAsRead(userId, notificationId);
+  }
+
+  async stop(): Promise<void> {
+    try {
+      await this.consumer.disconnect();
+      await this.redis.quit();
+      this.io.close();
+    } catch (error) {
+      console.error('Error stopping notification service:', error);
+      throw error;
+    }
   }
 } 

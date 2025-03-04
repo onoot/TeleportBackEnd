@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { 
   Notification, 
   NotificationType,
-  UserStatusNotification
+  UserNotification
 } from '../types/events';
 import { metrics } from '../utils/metrics';
 
@@ -46,15 +46,14 @@ export class WebSocketService {
         this.userSockets.get(socket.userId)!.add(socket.id);
 
         // Отправляем уведомление о подключении
-        const statusNotification: UserStatusNotification = {
+        const statusNotification: UserNotification = {
           id: uuidv4(),
-          type: NotificationType.USER_STATUS_CHANGED,
-          timestamp: new Date().toISOString(),
+          type: NotificationType.USER_STATUS_UPDATE,
+          timestamp: Date.now(),
           targetUsers: [socket.userId],
           data: {
             userId: socket.userId,
-            status: 'online',
-            lastSeen: new Date().toISOString()
+            status: 'online'
           }
         };
         this.sendToUsers([socket.userId], statusNotification);
@@ -67,15 +66,14 @@ export class WebSocketService {
               if (userSockets.size === 0) {
                 this.userSockets.delete(socket.userId);
                 // Отправляем уведомление об отключении
-                const offlineNotification: UserStatusNotification = {
+                const offlineNotification: UserNotification = {
                   id: uuidv4(),
-                  type: NotificationType.USER_STATUS_CHANGED,
-                  timestamp: new Date().toISOString(),
+                  type: NotificationType.USER_STATUS_UPDATE,
+                  timestamp: Date.now(),
                   targetUsers: [socket.userId],
                   data: {
                     userId: socket.userId,
-                    status: 'offline',
-                    lastSeen: new Date().toISOString()
+                    status: 'offline'
                   }
                 };
                 this.sendToUsers([socket.userId], offlineNotification);
@@ -90,8 +88,8 @@ export class WebSocketService {
     });
   }
 
-  public sendToUsers(userIds: number[], message: { type: string; data: any }): void {
-    const endTimer = metrics.wsOperationDuration.startTimer({ operation: 'send_to_users' });
+  public sendToUsers(userIds: number[], message: Notification): void {
+    const endTimer = metrics.wsOperationDuration.startTimer();
     try {
       userIds.forEach(userId => {
         const socketIds = this.userSockets.get(userId);
@@ -104,10 +102,10 @@ export class WebSocketService {
           });
         }
       });
-      metrics.wsOperations.inc({ type: 'send_to_users', status: 'success' });
+      metrics.wsOperations.inc({ type: message.type, status: 'success' });
     } catch (error) {
       console.error('Error sending message to users:', error);
-      metrics.wsOperations.inc({ type: 'send_to_users', status: 'error' });
+      metrics.wsOperations.inc({ type: message.type, status: 'error' });
     } finally {
       endTimer();
     }

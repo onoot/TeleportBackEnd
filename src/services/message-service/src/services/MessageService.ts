@@ -1,52 +1,44 @@
 import { Service } from 'typedi';
-import { MessageModel, IMessage, MessageStatus, MessageType, SendMessageRequest, EditMessageRequest, AddReactionRequest } from '../models/MessageModel';
+import { MessageModel, IMessage, MessageStatus, MessageType, SendMessageRequest, EditMessageRequest, AddReactionRequest, Attachment } from '../models/MessageModel';
 import { KafkaProducer } from '../kafka/producer';
+import { Message } from '../entities/Message';
+import { AppDataSource } from '../data-source';
+import { Repository, DeepPartial } from 'typeorm';
+import axios, { AxiosError } from 'axios';
+import { config } from '../config';
+import { ChannelService } from './ChannelService';
+
+interface CreateMessageDTO {
+  content: string;
+  channelId: string;
+  authorId: string;
+  replyTo?: string;
+  attachments?: string[];
+}
 
 @Service()
 export class MessageService {
-  constructor(private kafkaProducer: KafkaProducer) {}
+  private messageRepository: Repository<Message>;
 
-  async getDialogMessages(currentUserId: string, partnerId: string, page: number = 1, limit: number = 50): Promise<{
-    messages: IMessage[];
-    pagination: {
-      page: number;
-      limit: number;
-      total: number;
-      hasMore: boolean;
-    };
-  }> {
+  constructor(
+    private kafkaProducer: KafkaProducer,
+    private channelService: ChannelService
+  ) {
+    this.messageRepository = AppDataSource.getRepository(Message);
+  }
+
+  async getDialogMessages(currentUserId: string, partnerId: string, page: number = 1, limit: number = 50) {
     const skip = (page - 1) * limit;
 
-    const query = {
-      type: MessageType.DIRECT,
-      $or: [
-        { senderId: currentUserId, recipientId: partnerId },
-        { senderId: partnerId, recipientId: currentUserId }
+    const [messages, total] = await this.messageRepository.findAndCount({
+      where: [
+        { senderId: currentUserId, recipientId: partnerId, isDeleted: false },
+        { senderId: partnerId, recipientId: currentUserId, isDeleted: false }
       ],
-      isDeleted: false
-    };
-
-    const [messages, total] = await Promise.all([
-      MessageModel.find(query)
-        .select({
-          _id: 1,
-          type: 1,
-          senderId: 1,
-          recipientId: 1,
-          content: 1,
-          attachments: 1,
-          status: 1,
-          reactions: 1,
-          replyToId: 1,
-          createdAt: 1,
-          updatedAt: 1
-        })
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      MessageModel.countDocuments(query)
-    ]);
+      order: { createdAt: 'DESC' },
+      skip,
+      take: limit
+    });
 
     return {
       messages,
@@ -59,45 +51,18 @@ export class MessageService {
     };
   }
 
-  async getChannelMessages(channelId: string, page: number = 1, limit: number = 50): Promise<{
-    messages: IMessage[];
-    pagination: {
-      page: number;
-      limit: number;
-      total: number;
-      hasMore: boolean;
-    };
-  }> {
+  async getChannelMessages(channelId: string, page: number = 1, limit: number = 50) {
     const skip = (page - 1) * limit;
 
-    const query = {
-      type: MessageType.CHANNEL,
-      channelId,
-      isDeleted: false
-    };
-
-    const [messages, total] = await Promise.all([
-      MessageModel.find(query)
-        .select({
-          _id: 1,
-          type: 1,
-          senderId: 1,
-          channelId: 1,
-          serverId: 1,
-          content: 1,
-          attachments: 1,
-          status: 1,
-          reactions: 1,
-          replyToId: 1,
-          createdAt: 1,
-          updatedAt: 1
-        })
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      MessageModel.countDocuments(query)
-    ]);
+    const [messages, total] = await this.messageRepository.findAndCount({
+      where: {
+        channelId,
+        isDeleted: false
+      },
+      order: { createdAt: 'DESC' },
+      skip,
+      take: limit
+    });
 
     return {
       messages,
@@ -110,195 +75,174 @@ export class MessageService {
     };
   }
 
-  async getUnreadMessages(userId: string): Promise<IMessage[]> {
-    return MessageModel.find({
-      recipientId: userId,
-      status: { $ne: MessageStatus.READ },
-      isDeleted: false
-    }).sort({ createdAt: -1 });
+  async getUnreadMessages(userId: string) {
+    return this.messageRepository.find({
+      where: {
+        recipientId: userId,
+        status: MessageStatus.SENT,
+        isDeleted: false
+      },
+      order: { createdAt: 'DESC' }
+    });
   }
 
-  async sendDirectMessage(senderId: string, recipientId: string, messageData: SendMessageRequest): Promise<IMessage> {
-    const message = new MessageModel({
+  async sendDirectMessage(senderId: string, recipientId: string, messageRequest: SendMessageRequest) {
+    const messageData: DeepPartial<Message> = {
       type: MessageType.DIRECT,
       senderId,
       recipientId,
-      content: messageData.content,
-      attachments: messageData.attachments,
+      content: messageRequest.content,
+      attachments: messageRequest.attachments || [],
       status: MessageStatus.SENT,
-      replyToId: messageData.replyToId || null
-    });
+      replyTo: messageRequest.replyToId || undefined
+    };
 
-    await message.save();
+    const message = this.messageRepository.create(messageData);
+    const savedMessage = await this.messageRepository.save(message);
 
     await this.kafkaProducer.send('notifications', {
       type: 'new_direct_message',
-      messageId: message._id,
+      messageId: savedMessage.id,
       senderId,
       recipientId,
-      content: message.content,
-      replyToId: message.replyToId
+      content: savedMessage.content,
+      replyTo: savedMessage.replyTo
     });
 
-    return message;
+    return savedMessage;
   }
 
-  async sendChannelMessage(senderId: string, channelId: string, serverId: string, messageData: SendMessageRequest): Promise<IMessage> {
-    const message = new MessageModel({
+  async sendChannelMessage(senderId: string, channelId: string, serverId: string, messageRequest: SendMessageRequest) {
+    const messageData: DeepPartial<Message> = {
       type: MessageType.CHANNEL,
       senderId,
       channelId,
       serverId,
-      content: messageData.content,
-      attachments: messageData.attachments,
+      content: messageRequest.content,
+      attachments: messageRequest.attachments || [],
       status: MessageStatus.SENT,
-      replyToId: messageData.replyToId || null
-    });
+      replyTo: messageRequest.replyToId || undefined
+    };
 
-    await message.save();
+    const message = this.messageRepository.create(messageData);
+    const savedMessage = await this.messageRepository.save(message);
 
     await this.kafkaProducer.send('notifications', {
       type: 'new_channel_message',
-      messageId: message._id,
+      messageId: savedMessage.id,
       senderId,
       channelId,
       serverId,
-      content: message.content,
-      replyToId: message.replyToId
+      content: savedMessage.content,
+      replyTo: savedMessage.replyTo
     });
 
-    return message;
+    return savedMessage;
   }
 
-  async markAsRead(userId: string, messageId: string): Promise<void> {
-    const message = await MessageModel.findOneAndUpdate(
+  async markAsRead(userId: string, messageId: string) {
+    const result = await this.messageRepository.update(
       {
-        _id: messageId,
+        id: messageId,
         recipientId: userId,
-        status: { $ne: MessageStatus.READ }
+        status: MessageStatus.SENT
       },
-      { status: MessageStatus.READ },
-      { new: true }
+      { status: MessageStatus.READ }
     );
 
-    if (!message) {
+    if (result.affected === 0) {
       throw new Error('Message not found or already read');
     }
   }
 
-  async markDialogAsRead(userId: string, partnerId: string): Promise<void> {
-    await MessageModel.updateMany(
+  async markDialogAsRead(userId: string, partnerId: string) {
+    await this.messageRepository.update(
       {
         senderId: partnerId,
         recipientId: userId,
-        status: { $ne: MessageStatus.READ }
+        status: MessageStatus.SENT
       },
       { status: MessageStatus.READ }
     );
   }
 
-  async editMessage(userId: string, messageId: string, messageData: EditMessageRequest): Promise<IMessage> {
-    const message = await MessageModel.findOne({
-      _id: messageId,
-      senderId: userId,
-      isDeleted: false
+  async editMessage(messageId: string, content: string) {
+    const message = await this.messageRepository.findOne({
+      where: { id: messageId }
     });
 
     if (!message) {
       throw new Error('Message not found');
     }
 
-    message.content = messageData.content;
-    if (messageData.attachments) {
-      message.attachments = messageData.attachments;
-    }
+    message.content = content;
+    message.edited = true;
+    message.editedAt = new Date();
 
-    await message.save();
+    await this.messageRepository.save(message);
     return message;
   }
 
-  async deleteMessage(userId: string, messageId: string): Promise<void> {
-    const message = await MessageModel.findOne({
-      _id: messageId,
-      senderId: userId,
-      isDeleted: false
-    });
-
-    if (!message) {
-      throw new Error('Message not found');
-    }
-
-    message.isDeleted = true;
-    await message.save();
-  }
-
-  async clearDialog(userId: string, partnerId: string): Promise<void> {
-    await MessageModel.updateMany(
-      {
-        $or: [
-          { senderId: userId, recipientId: partnerId },
-          { senderId: partnerId, recipientId: userId }
-        ]
-      },
+  async deleteMessage(messageId: string) {
+    const result = await this.messageRepository.update(
+      { id: messageId },
       { isDeleted: true }
     );
+
+    if (result.affected === 0) {
+      throw new Error('Message not found');
+    }
+
+    return true;
   }
 
-  async addReaction(userId: string, messageId: string, reactionData: AddReactionRequest): Promise<IMessage> {
-    const message = await MessageModel.findOne({
-      _id: messageId,
-      isDeleted: false
+  async addReaction(userId: string, messageId: string, reaction: AddReactionRequest) {
+    const message = await this.messageRepository.findOne({
+      where: { id: messageId }
     });
 
     if (!message) {
       throw new Error('Message not found');
     }
 
-    const existingReaction = message.reactions.find(
-      reaction => reaction.userId === userId && reaction.emoji === reactionData.emoji
-    );
-
-    if (existingReaction) {
-      throw new Error('Reaction already exists');
+    if (!message.reactions) {
+      message.reactions = {};
     }
 
-    message.reactions.push({
-      userId,
-      emoji: reactionData.emoji,
-      createdAt: new Date()
-    });
+    if (!message.reactions[reaction.emoji]) {
+      message.reactions[reaction.emoji] = [];
+    }
 
-    await message.save();
+    if (!message.reactions[reaction.emoji].includes(userId)) {
+      message.reactions[reaction.emoji].push(userId);
+      await this.messageRepository.save(message);
+    }
+
     return message;
   }
 
-  async removeReaction(userId: string, messageId: string, emoji: string): Promise<IMessage> {
-    const message = await MessageModel.findOne({
-      _id: messageId,
-      isDeleted: false
+  async removeReaction(userId: string, messageId: string, emoji: string) {
+    const message = await this.messageRepository.findOne({
+      where: { id: messageId }
     });
 
-    if (!message) {
-      throw new Error('Message not found');
+    if (!message || !message.reactions || !message.reactions[emoji]) {
+      throw new Error('Message or reaction not found');
     }
 
-    const reactionIndex = message.reactions.findIndex(
-      reaction => reaction.userId === userId && reaction.emoji === emoji
-    );
-
-    if (reactionIndex === -1) {
-      throw new Error('Reaction not found');
+    message.reactions[emoji] = message.reactions[emoji].filter((id: string) => id !== userId);
+    
+    if (message.reactions[emoji].length === 0) {
+      delete message.reactions[emoji];
     }
 
-    message.reactions.splice(reactionIndex, 1);
-    await message.save();
+    await this.messageRepository.save(message);
     return message;
   }
 
-  async getMessageReactions(messageId: string): Promise<IMessage['reactions']> {
-    const message = await MessageModel.findOne({
-      _id: messageId,
-      isDeleted: false
+  async getMessageReactions(messageId: string) {
+    const message = await this.messageRepository.findOne({
+      where: { id: messageId }
     });
 
     if (!message) {
@@ -308,23 +252,33 @@ export class MessageService {
     return message.reactions;
   }
 
-  async getReplyToMessage(messageId: string): Promise<IMessage | null> {
-    const message = await MessageModel.findOne({
-      _id: messageId,
-      isDeleted: false
-    }).select({
-      _id: 1,
-      type: 1,
-      senderId: 1,
-      channelId: 1,
-      serverId: 1,
-      recipientId: 1,
-      content: 1,
-      attachments: 1,
-      status: 1,
-      createdAt: 1
-    });
+  async checkAccess(userId: string, channelId: string): Promise<boolean> {
+    return this.channelService.checkAccess(userId, channelId);
+  }
 
-    return message;
+  async getRecentMessages(channelId: string, limit: number = 50) {
+    return this.messageRepository.find({
+      where: { channelId, isDeleted: false },
+      order: { createdAt: 'DESC' },
+      take: limit
+    });
+  }
+
+  async getChannelMembers(channelId: string): Promise<string[]> {
+    return this.channelService.getMembers(channelId);
+  }
+
+  async createMessage(data: CreateMessageDTO): Promise<Message> {
+    const messageData: DeepPartial<Message> = {
+      type: MessageType.CHANNEL,
+      content: data.content,
+      channelId: data.channelId,
+      senderId: data.authorId,
+      replyTo: data.replyTo,
+      attachments: data.attachments || []
+    };
+
+    const message = this.messageRepository.create(messageData);
+    return this.messageRepository.save(message);
   }
 } 

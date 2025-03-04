@@ -107,10 +107,7 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
 
           // Отправляем уведомление через WebSocket
           if (targetUsers.length > 0) {
-            this.webSocketService.sendToUsers(targetUsers, {
-              type: notification.type,
-              data: notification.data
-            });
+            this.webSocketService.sendToUsers(targetUsers, notification);
           }
 
           metrics.kafkaOperations.inc({ type: 'consume', status: 'success' });

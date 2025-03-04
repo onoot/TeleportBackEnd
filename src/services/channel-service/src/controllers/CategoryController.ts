@@ -1,16 +1,21 @@
-import { Request, Response } from 'express';
-import { getRepository } from 'typeorm';
+import { Response } from 'express';
+import { getRepository, FindOptionsWhere } from 'typeorm';
 import { Category } from '../entities/Category';
 import { Server } from '../entities/Server';
 import { ServerMember, MemberRole } from '../entities/ServerMember';
+import AuthenticatedRequest from '../types/request';
 
 export class CategoryController {
   // Создание новой категории
-  static async createCategory(req: Request, res: Response) {
+  static async createCategory(req: AuthenticatedRequest, res: Response) {
     try {
       const { name, position } = req.body;
       const serverId = parseInt(req.params.serverId);
-      const userId = req.user.id;
+      
+      if (!req.user) {
+        return res.status(401).json({ message: 'Unauthorized' });
+      }
+      const userId = parseInt(req.user.id);
 
       const serverRepo = getRepository(Server);
       const memberRepo = getRepository(ServerMember);
@@ -18,7 +23,10 @@ export class CategoryController {
 
       // Проверяем права пользователя
       const member = await memberRepo.findOne({
-        where: { server_id: serverId, user_id: userId }
+        where: { 
+          server_id: serverId, 
+          user_id: userId 
+        } as FindOptionsWhere<ServerMember>
       });
 
       if (!member || (member.role !== MemberRole.OWNER && member.role !== MemberRole.ADMIN)) {
@@ -40,11 +48,15 @@ export class CategoryController {
   }
 
   // Обновление категории
-  static async updateCategory(req: Request, res: Response) {
+  static async updateCategory(req: AuthenticatedRequest, res: Response) {
     try {
       const { name, position } = req.body;
       const categoryId = parseInt(req.params.id);
-      const userId = req.user.id;
+      
+      if (!req.user) {
+        return res.status(401).json({ message: 'Unauthorized' });
+      }
+      const userId = parseInt(req.user.id);
 
       const categoryRepo = getRepository(Category);
       const memberRepo = getRepository(ServerMember);
@@ -59,7 +71,10 @@ export class CategoryController {
 
       // Проверяем права пользователя
       const member = await memberRepo.findOne({
-        where: { server_id: category.server_id, user_id: userId }
+        where: { 
+          server_id: category.server_id, 
+          user_id: userId 
+        } as FindOptionsWhere<ServerMember>
       });
 
       if (!member || (member.role !== MemberRole.OWNER && member.role !== MemberRole.ADMIN)) {
@@ -78,10 +93,14 @@ export class CategoryController {
   }
 
   // Удаление категории
-  static async deleteCategory(req: Request, res: Response) {
+  static async deleteCategory(req: AuthenticatedRequest, res: Response) {
     try {
       const categoryId = parseInt(req.params.id);
-      const userId = req.user.id;
+      
+      if (!req.user) {
+        return res.status(401).json({ message: 'Unauthorized' });
+      }
+      const userId = parseInt(req.user.id);
 
       const categoryRepo = getRepository(Category);
       const memberRepo = getRepository(ServerMember);
@@ -96,7 +115,10 @@ export class CategoryController {
 
       // Проверяем права пользователя
       const member = await memberRepo.findOne({
-        where: { server_id: category.server_id, user_id: userId }
+        where: { 
+          server_id: category.server_id, 
+          user_id: userId 
+        } as FindOptionsWhere<ServerMember>
       });
 
       if (!member || (member.role !== MemberRole.OWNER && member.role !== MemberRole.ADMIN)) {
@@ -112,17 +134,24 @@ export class CategoryController {
   }
 
   // Получение всех категорий сервера
-  static async getServerCategories(req: Request, res: Response) {
+  static async getServerCategories(req: AuthenticatedRequest, res: Response) {
     try {
       const serverId = parseInt(req.params.serverId);
-      const userId = req.user.id;
+      
+      if (!req.user) {
+        return res.status(401).json({ message: 'Unauthorized' });
+      }
+      const userId = parseInt(req.user.id);
 
       const memberRepo = getRepository(ServerMember);
       const categoryRepo = getRepository(Category);
 
       // Проверяем, является ли пользователь участником сервера
       const member = await memberRepo.findOne({
-        where: { server_id: serverId, user_id: userId }
+        where: { 
+          server_id: serverId, 
+          user_id: userId 
+        } as FindOptionsWhere<ServerMember>
       });
 
       if (!member) {

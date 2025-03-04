@@ -1,4 +1,4 @@
-import { Permission } from '../entities/Role';
+import { Permission } from './role';
 
 export interface DatabaseConfig {
   type: string;

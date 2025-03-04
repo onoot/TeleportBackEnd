@@ -5,9 +5,10 @@ export interface UserSettings {
 }
 
 export interface User {
-    id: number;
+    id: string;
     username: string;
     email: string;
+    roles: string[];
     avatar?: string;
     status?: 'online' | 'offline';
     settings?: UserSettings;
@@ -15,9 +16,9 @@ export interface User {
 }
 
 export interface JwtPayload {
-    id: number;
-    email: string;
-    username?: string;
+    id: string;
+    username: string;
+    roles: string[];
     iat?: number;
     exp?: number;
 }
@@ -26,9 +27,9 @@ declare global {
     namespace Express {
         interface Request {
             user?: {
-                id: number;
-                email: string;
-                username?: string;
+                id: string;
+                username: string;
+                roles: string[];
             };
         }
     }

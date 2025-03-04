@@ -1,97 +1,454 @@
+﻿openapi: 3.0.0
+info:
+  title: Messenger API
+  description: API документация для микросервисов мессенджера
+  version: 1.0.0
+  contact:
+    name: Messenger Team
+
+servers:
+  - url: http://api.messenger.local
+    description: Локальный сервер разработки
+  - url: https://api.messenger.com
+    description: Продакшн сервер
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        status:
+          type: integer
+          example: 400
+        message:
+          type: string
+          example: "Ошибка валидации"
+
+    # Схемы для звонков
+    Call:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        roomId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, active, ended, rejected]
+        type:
+          type: string
+          enum: [audio, video]
+        initiatorId:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CallParticipant:
+      type: object
+      properties:
+        userId:
+          type: integer
+        callId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, connected, disconnected]
+        audioEnabled:
+          type: boolean
+        videoEnabled:
+          type: boolean
+        joinedAt:
+          type: string
+          format: date-time
+
+    # Схемы для сообщений
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        content:
+          type: string
+        senderId:
+          type: integer
+        channelId:
+          type: string
+          format: uuid
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attachment'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Attachment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [image, video, file]
+        url:
+          type: string
+        size:
+          type: integer
+        name:
+          type: string
+
+    # Схемы для каналов
+    Channel:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          type: string
+          enum: [direct, group]
+        creatorId:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # Схемы для уведомлений
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [message, call, system]
+        userId:
+          type: integer
+        content:
+          type: string
+        read:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+paths:
+  # Звонки
+  /api/v1/calls/user/{userId}:
+    post:
+      tags:
+        - Звонки
+      summary: Начать звонок с пользователем
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum: [audio, video]
+      responses:
+        '201':
+          description: Звонок создан
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                  data:
+                    $ref: '#/components/schemas/Call'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/calls/{callId}/accept:
+    put:
+      tags:
+        - Звонки
+      summary: Принять звонок
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: callId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Звонок принят
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Call'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Сообщения
+  /api/v1/messages:
+    post:
+      tags:
+        - Сообщения
+      summary: Отправить сообщение
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content:
+                  type: string
+                channelId:
+                  type: string
+                  format: uuid
+                attachments:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Attachment'
+      responses:
+        '201':
+          description: Сообщение отправлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+
+  /api/v1/messages/{messageId}:
+    get:
+      tags:
+        - Сообщения
+      summary: Получить сообщение по ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Сообщение найдено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+
+  # Каналы
+  /api/v1/channels:
+    post:
+      tags:
+        - Каналы
+      summary: Создать новый канал
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                type:
+                  type: string
+                  enum: [direct, group]
+      responses:
+        '201':
+          description: Канал создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Channel'
+
+  # Уведомления
+  /api/v1/notifications:
+    get:
+      tags:
+        - Уведомления
+      summary: Получить список уведомлений
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Список уведомлений
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Notification'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  pages:
+                    type: integer
+
+components:
+  responses:
+    BadRequest:
+      description: Неверный запрос
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Требуется авторизация
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+tags:
+  - name: Звонки
+    description: Операции со звонками
+  - name: Сообщения
+    description: Операции с сообщениями
+  - name: Каналы
+    description: Операции с каналами
+  - name: Уведомления
+    description: Операции с уведомлениями
+
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: swagger-service-config
+  name: swagger-config
   namespace: messenger
 data:
-  PORT: "8080"
-  CORS_ORIGIN: "*"
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: swagger-service
-  namespace: messenger
-spec:
-  selector:
-    app: swagger-service
-  ports:
-    - name: http
-      port: 80
-      targetPort: 8080
-  type: ClusterIP
+  swagger.yaml: |
+    $(cat kubernetes/swagger-config.yaml)
+
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: swagger-service
+  name: swagger-ui
   namespace: messenger
+  labels:
+    app: swagger-ui
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: swagger-service
+      app: swagger-ui
   template:
     metadata:
       labels:
-        app: swagger-service
+        app: swagger-ui
     spec:
       containers:
-        - name: swagger-service
-          image: swaggerapi/swagger-ui:latest
-          ports:
-            - containerPort: 8080
-              name: http
-          env:
-            - name: BASE_URL
-              value: "/api/docs"
-            - name: SWAGGER_JSON
-              value: "/etc/swagger/swagger.yaml"
-          resources:
-            requests:
-              cpu: 10m
-              memory: 32Mi
-            limits:
-              cpu: 30m
-              memory: 64Mi
-          volumeMounts:
-            - name: swagger-config
-              mountPath: /etc/swagger
-          livenessProbe:
-            httpGet:
-              path: /api/docs
-              port: http
-            initialDelaySeconds: 30
-            periodSeconds: 30
-            timeoutSeconds: 5
-          readinessProbe:
-            httpGet:
-              path: /api/docs
-              port: http
-            initialDelaySeconds: 15
-            periodSeconds: 15
-            timeoutSeconds: 5
-      volumes:
+      - name: swagger-ui
+        image: swaggerapi/swagger-ui:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: SWAGGER_JSON
+          value: /swagger/swagger.yaml
+        volumeMounts:
         - name: swagger-config
-          configMap:
-            name: swagger-config
+          mountPath: /swagger
+      volumes:
+      - name: swagger-config
+        configMap:
+          name: swagger-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: swagger-ui
+  namespace: messenger
+spec:
+  selector:
+    app: swagger-ui
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+  type: ClusterIP
+
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: swagger-service-ingress
+  name: swagger-ui-ingress
   namespace: messenger
   annotations:
-    kubernetes.io/ingress.class: "traefik"
-    traefik.ingress.kubernetes.io/router.entrypoints: "web"
+    nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   rules:
-    - http:
-        paths:
-          - path: /api/docs
-            pathType: Prefix
-            backend:
-              service:
-                name: swagger-service
-                port:
-                  number: 80 
+  - host: docs.messenger.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: swagger-ui
+            port:
+              number: 80 

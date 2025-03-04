@@ -1,7 +1,10 @@
-import { BaseWebSocketGateway, AuthenticatedSocket } from '../../../shared/websocket/BaseWebSocketGateway';
-import { Message } from '../models/Message';
+import { Server as HttpServer } from 'http';
+import { BaseWebSocketGateway, AuthenticatedSocket } from '../shared/websocket/BaseWebSocketGateway';
+import { Message } from '../entities/Message';
 import { MessageService } from '../services/MessageService';
 import { KafkaService } from '../services/KafkaService';
+import { RedisService } from '../services/RedisService';
+import { Socket } from 'socket.io';
 
 interface MessagePayload {
   content: string;
@@ -21,37 +24,39 @@ export class MessageGateway extends BaseWebSocketGateway {
   }
 
   protected setupHandlers(): void {
-    this.io.on('connection', (socket: AuthenticatedSocket) => {
-      socket.on('join_channel', async (channelId: string) => {
+    this.io.on('connection', (socket: Socket) => {
+      const authenticatedSocket = socket as AuthenticatedSocket;
+
+      authenticatedSocket.on('join_channel', async (channelId: string) => {
         try {
           // Проверяем права доступа
-          await this.messageService.checkAccess(socket.userId, channelId);
+          await this.messageService.checkAccess(authenticatedSocket.userId, channelId);
           
           // Подписываем на канал
-          await this.subscribeToRoom(socket, `channel:${channelId}`);
+          await this.subscribeToRoom(authenticatedSocket, `channel:${channelId}`);
           
           // Отправляем последние сообщения
           const messages = await this.messageService.getRecentMessages(channelId);
-          socket.emit('initial_state', messages);
+          authenticatedSocket.emit('initial_state', messages);
           
           // Сохраняем информацию об активном пользователе в Redis
-          await this.redisService.addActiveUser(channelId, socket.userId);
+          await this.redisService.addActiveUser(channelId, authenticatedSocket.userId);
         } catch (error) {
-          socket.emit('error', { message: 'Failed to join channel' });
+          authenticatedSocket.emit('error', { message: 'Failed to join channel' });
         }
       });
 
-      socket.on('leave_channel', async (channelId: string) => {
-        await this.unsubscribeFromRoom(socket, `channel:${channelId}`);
-        await this.redisService.removeActiveUser(channelId, socket.userId);
+      authenticatedSocket.on('leave_channel', async (channelId: string) => {
+        await this.unsubscribeFromRoom(authenticatedSocket, `channel:${channelId}`);
+        await this.redisService.removeActiveUser(channelId, authenticatedSocket.userId);
       });
 
-      socket.on('send_message', async (payload: MessagePayload) => {
+      authenticatedSocket.on('send_message', async (payload: MessagePayload) => {
         try {
           // Создаем сообщение
           const message = await this.messageService.createMessage({
             ...payload,
-            authorId: socket.userId
+            authorId: authenticatedSocket.userId
           });
 
           // Получаем список онлайн пользователей в канале
@@ -74,29 +79,28 @@ export class MessageGateway extends BaseWebSocketGateway {
               data: {
                 messageId: message.id,
                 channelId: message.channelId,
-                serverId: message.serverId,
                 message: message
               }
             });
           }
         } catch (error) {
-          socket.emit('error', { message: 'Failed to send message' });
+          authenticatedSocket.emit('error', { message: 'Failed to send message' });
         }
       });
 
-      socket.on('typing', (channelId: string) => {
-        socket.broadcast.to(`channel:${channelId}`).emit('user_typing', {
-          userId: socket.userId,
+      authenticatedSocket.on('typing', (channelId: string) => {
+        authenticatedSocket.broadcast.to(`channel:${channelId}`).emit('user_typing', {
+          userId: authenticatedSocket.userId,
           channelId
         });
       });
 
-      socket.on('disconnect', async () => {
+      authenticatedSocket.on('disconnect', async () => {
         // Удаляем пользователя из всех активных каналов
-        for (const sub of socket.subscriptions) {
+        for (const sub of authenticatedSocket.subscriptions) {
           if (sub.startsWith('channel:')) {
             const channelId = sub.split(':')[1];
-            await this.redisService.removeActiveUser(channelId, socket.userId);
+            await this.redisService.removeActiveUser(channelId, authenticatedSocket.userId);
           }
         }
       });

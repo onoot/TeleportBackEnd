@@ -1,16 +1,27 @@
 import { Request, Response, NextFunction } from 'express';
 import { Service } from 'typedi';
 import { MessageService } from '../../services/MessageService';
-import { SendMessageRequest, EditMessageRequest, AddReactionRequest } from '../../models/MessageModel';
-import { JsonController, Post, Get, Body, Param, UseBefore, CurrentUser, HttpError, QueryParam } from 'routing-controllers';
+import { ChannelService } from '../../services/ChannelService';
+import { IMessage, SendMessageRequest, EditMessageRequest, AddReactionRequest, MessageType, MessageStatus } from '../../models/MessageModel';
+import { JsonController, Post, Get, Body, Param, UseBefore, CurrentUser, HttpError, QueryParam, UploadedFile, Authorized, Delete } from 'routing-controllers';
 import { authMiddleware } from '../../middleware/auth';
+import { R2Service } from '../../services/R2Service';
 
 @JsonController('/api/v1/messages')
 @Service()
 export class MessageController {
-  constructor(private messageService: MessageService) {}
+  private r2Service: R2Service;
+  private channelService: ChannelService;
 
-  @Get('/dialogs/:userId/messages')
+  constructor(
+    private messageService: MessageService,
+    channelService: ChannelService
+  ) {
+    this.r2Service = R2Service.getInstance();
+    this.channelService = channelService;
+  }
+
+  @Get('/dialog/:userId')
   @UseBefore(authMiddleware)
   async getDialogMessages(
     @Param('userId') partnerId: string,
@@ -21,7 +32,7 @@ export class MessageController {
     return this.messageService.getDialogMessages(currentUser.id, partnerId, page, limit);
   }
 
-  @Post('/dialogs/:userId/messages')
+  @Post('/dialog/:userId')
   @UseBefore(authMiddleware)
   async sendDirectMessage(
     @Param('userId') recipientId: string,
@@ -31,7 +42,7 @@ export class MessageController {
     return this.messageService.sendDirectMessage(currentUser.id, recipientId, messageData);
   }
 
-  @Get('/channels/:channelId/messages')
+  @Get('/channel/:channelId')
   @UseBefore(authMiddleware)
   async getChannelMessages(
     @Param('channelId') channelId: string,
@@ -42,15 +53,19 @@ export class MessageController {
     return this.messageService.getChannelMessages(channelId, page, limit);
   }
 
-  @Post('/channels/:channelId/messages')
+  @Post('/channel/:channelId')
   @UseBefore(authMiddleware)
   async sendChannelMessage(
     @Param('channelId') channelId: string,
-    @Param('serverId') serverId: string,
     @Body() messageData: SendMessageRequest,
     @CurrentUser() currentUser: { id: string }
   ) {
-    return this.messageService.sendChannelMessage(currentUser.id, channelId, serverId, messageData);
+    const channel = await this.channelService.findById(channelId);
+    if (!channel) {
+      throw new HttpError(404, 'Channel not found');
+    }
+
+    return this.messageService.sendChannelMessage(currentUser.id, channelId, channel.serverId || '', messageData);
   }
 
   @Get('/unread')
@@ -69,7 +84,7 @@ export class MessageController {
     return { success: true };
   }
 
-  @Post('/dialogs/:userId/read')
+  @Post('/dialog/:userId/read')
   @UseBefore(authMiddleware)
   async markDialogAsRead(
     @Param('userId') userId: string,
@@ -79,14 +94,14 @@ export class MessageController {
     return { success: true };
   }
 
-  @Post('/:messageId')
+  @Post('/:messageId/edit')
   @UseBefore(authMiddleware)
   async editMessage(
     @Param('messageId') messageId: string,
     @Body() messageData: EditMessageRequest,
     @CurrentUser() currentUser: { id: string }
   ) {
-    return this.messageService.editMessage(currentUser.id, messageId, messageData);
+    return this.messageService.editMessage(messageId, messageData.content);
   }
 
   @Post('/:messageId/delete')
@@ -95,11 +110,11 @@ export class MessageController {
     @Param('messageId') messageId: string,
     @CurrentUser() currentUser: { id: string }
   ) {
-    await this.messageService.deleteMessage(currentUser.id, messageId);
+    await this.messageService.deleteMessage(messageId);
     return { success: true };
   }
 
-  @Post('/:messageId/reactions')
+  @Post('/:messageId/reaction')
   @UseBefore(authMiddleware)
   async addReaction(
     @Param('messageId') messageId: string,
@@ -109,7 +124,7 @@ export class MessageController {
     return this.messageService.addReaction(currentUser.id, messageId, reactionData);
   }
 
-  @Post('/:messageId/reactions/:emoji/delete')
+  @Delete('/:messageId/reaction/:emoji')
   @UseBefore(authMiddleware)
   async removeReaction(
     @Param('messageId') messageId: string,
@@ -123,5 +138,15 @@ export class MessageController {
   @UseBefore(authMiddleware)
   async getMessageReactions(@Param('messageId') messageId: string) {
     return this.messageService.getMessageReactions(messageId);
+  }
+
+  @Post('/channel/:channelId/attachment')
+  @UseBefore(authMiddleware)
+  async uploadAttachment(
+    @Param('channelId') channelId: string,
+    @UploadedFile('file', { required: true }) file: { buffer: Buffer; mimetype: string; originalname: string; size: number }
+  ) {
+    const url = await this.r2Service.uploadAttachment(file.buffer, file.mimetype);
+    return { url };
   }
 } 
